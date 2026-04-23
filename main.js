@@ -30,7 +30,13 @@ const clearBtn         = $('#clearBtn');
 
 const qualityRange     = $('#qualityRange');
 const qualityValue     = $('#qualityValue');
-const maxSizeSel       = $('#maxSize');
+// 输出尺寸模式（3 选 1）
+const resizeModeRadios = document.querySelectorAll('input[name="resizeMode"]');
+const maxSizeInput     = $('#maxSizeInput');
+const maxSidePresetsEl = $('#maxSidePresets');
+const targetWInput     = $('#targetWInput');
+const targetHInput     = $('#targetHInput');
+const fitModeSel       = $('#fitMode');
 const bgColorInput     = $('#bgColor');
 const bgColorText      = $('#bgColorText');
 const prefixInput      = $('#prefix');
@@ -71,20 +77,34 @@ const formatDescEl    = $('#formatDesc');
 
 // ============== 默认参数（开关关闭时使用） ==============
 const DEFAULT_PARAMS = {
-    quality: 0.95,
-    maxSize: 0,         // 0 表示保持原尺寸
-    bgColor: '#ffffff',
-    prefix:  ''
+    quality:    0.95,
+    resizeMode: 'original',
+    maxSize:    0,
+    targetW:    0,
+    targetH:    0,
+    fitMode:    'contain',
+    bgColor:    '#ffffff',
+    prefix:     ''
 };
+
+function getResizeMode() {
+    const checked = document.querySelector('input[name="resizeMode"]:checked');
+    return checked ? checked.value : 'original';
+}
 
 /** 获取当前生效的转换参数（根据开关状态） */
 function getEffectiveParams() {
     if (paramToggle && paramToggle.checked) {
+        const resizeMode = getResizeMode();
         return {
-            quality: parseFloat(qualityRange.value) || 0.92,
-            maxSize: parseInt(maxSizeSel.value, 10) || 0,
-            bgColor: bgColorInput.value || '#ffffff',
-            prefix:  (prefixInput.value || '').trim()
+            quality:    parseFloat(qualityRange.value) || 0.92,
+            resizeMode,
+            maxSize:    resizeMode === 'maxSide' ? (parseInt(maxSizeInput && maxSizeInput.value, 10) || 0) : 0,
+            targetW:    resizeMode === 'wh' ? (parseInt(targetWInput && targetWInput.value, 10) || 0) : 0,
+            targetH:    resizeMode === 'wh' ? (parseInt(targetHInput && targetHInput.value, 10) || 0) : 0,
+            fitMode:    (fitModeSel && fitModeSel.value) || 'contain',
+            bgColor:    bgColorInput.value || '#ffffff',
+            prefix:     (prefixInput.value || '').trim()
         };
     }
     return { ...DEFAULT_PARAMS };
@@ -728,31 +748,87 @@ async function convertFileToImage(file, onProgress) {
     // --- 第 2 阶段：按参数缩放 + 背景填充 + 输出 Blob（所有格式共用）---
 
     const eff = getEffectiveParams();
-    let maxSize = eff.maxSize;
     const quality = eff.quality;
     const bg = eff.bgColor;
     const format = getOutputFormat();            // 'jpg' | 'png'
     const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
 
-    // 大文件自动降采样
-    const autoCap = isHuge ? LARGE_FILE_CANVAS_MAX_DIM
-                  : isLarge ? SAFE_CANVAS_MAX_DIM
-                  : 0;
-    if (autoCap > 0) {
-        if (maxSize === 0 || maxSize > autoCap) {
+    // === 1) 根据 resizeMode 计算"目标画布尺寸" + 源图在画布中的绘制方式 ===
+    let outW = srcW;
+    let outH = srcH;
+    let drawParams = { dx: 0, dy: 0, dw: srcW, dh: srcH };
+
+    if (eff.resizeMode === 'maxSide') {
+        let maxSize = eff.maxSize || 0;
+        const autoCap = isHuge ? LARGE_FILE_CANVAS_MAX_DIM
+                      : isLarge ? SAFE_CANVAS_MAX_DIM
+                      : 0;
+        if (autoCap > 0 && (maxSize === 0 || maxSize > autoCap)) {
             maxSize = autoCap;
             console.info(`[大文件优化] ${file.name}（${formatSize(file.size)}）自动降采样至 ${autoCap}px`);
         }
-    }
-    const HARD_CANVAS_MAX = SAFE_CANVAS_MAX_DIM;
-    const effectiveCap = maxSize > 0 ? Math.min(maxSize, HARD_CANVAS_MAX) : HARD_CANVAS_MAX;
+        const HARD_CANVAS_MAX = SAFE_CANVAS_MAX_DIM;
+        const effectiveCap = maxSize > 0 ? Math.min(maxSize, HARD_CANVAS_MAX) : HARD_CANVAS_MAX;
 
-    let outW = srcW;
-    let outH = srcH;
-    if (Math.max(outW, outH) > effectiveCap) {
-        const ratio = effectiveCap / Math.max(outW, outH);
-        outW = Math.max(1, Math.round(outW * ratio));
-        outH = Math.max(1, Math.round(outH * ratio));
+        outW = srcW;
+        outH = srcH;
+        if (Math.max(outW, outH) > effectiveCap) {
+            const ratio = effectiveCap / Math.max(outW, outH);
+            outW = Math.max(1, Math.round(outW * ratio));
+            outH = Math.max(1, Math.round(outH * ratio));
+        }
+        drawParams = { dx: 0, dy: 0, dw: outW, dh: outH };
+    } else if (eff.resizeMode === 'wh') {
+        let tw = eff.targetW || 0;
+        let th = eff.targetH || 0;
+        const fit = eff.fitMode || 'contain';
+
+        if (tw <= 0 && th <= 0) { tw = srcW; th = srcH; }
+        else if (tw <= 0) { tw = Math.max(1, Math.round(srcW * (th / srcH))); }
+        else if (th <= 0) { th = Math.max(1, Math.round(srcH * (tw / srcW))); }
+
+        const autoCap = isHuge ? LARGE_FILE_CANVAS_MAX_DIM
+                      : isLarge ? SAFE_CANVAS_MAX_DIM
+                      : SAFE_CANVAS_MAX_DIM;
+        if (Math.max(tw, th) > autoCap) {
+            const r = autoCap / Math.max(tw, th);
+            tw = Math.max(1, Math.round(tw * r));
+            th = Math.max(1, Math.round(th * r));
+            console.info(`[大文件优化] ${file.name} 目标尺寸超过 ${autoCap}px，等比压缩到 ${tw}×${th}`);
+        }
+
+        outW = tw;
+        outH = th;
+
+        const srcRatio = srcW / srcH;
+        const dstRatio = tw / th;
+        if (fit === 'fill') {
+            drawParams = { dx: 0, dy: 0, dw: tw, dh: th };
+        } else if (fit === 'cover') {
+            let dw, dh;
+            if (srcRatio > dstRatio) { dh = th; dw = Math.round(th * srcRatio); }
+            else { dw = tw; dh = Math.round(tw / srcRatio); }
+            drawParams = { dx: Math.round((tw - dw) / 2), dy: Math.round((th - dh) / 2), dw, dh };
+        } else {
+            let dw, dh;
+            if (srcRatio > dstRatio) { dw = tw; dh = Math.round(tw / srcRatio); }
+            else { dh = th; dw = Math.round(th * srcRatio); }
+            drawParams = { dx: Math.round((tw - dw) / 2), dy: Math.round((th - dh) / 2), dw, dh };
+        }
+    } else {
+        const autoCap = isHuge ? LARGE_FILE_CANVAS_MAX_DIM
+                      : isLarge ? SAFE_CANVAS_MAX_DIM
+                      : 0;
+        if (autoCap > 0 && Math.max(srcW, srcH) > autoCap) {
+            const ratio = autoCap / Math.max(srcW, srcH);
+            outW = Math.max(1, Math.round(srcW * ratio));
+            outH = Math.max(1, Math.round(srcH * ratio));
+            console.info(`[大文件优化] ${file.name}（${formatSize(file.size)}）自动降采样至 ${autoCap}px`);
+        } else {
+            outW = srcW;
+            outH = srcH;
+        }
+        drawParams = { dx: 0, dy: 0, dw: outW, dh: outH };
     }
 
     let outCanvas = document.createElement('canvas');
@@ -760,6 +836,7 @@ async function convertFileToImage(file, onProgress) {
     outCanvas.height = outH;
     const outCtx = outCanvas.getContext('2d');
 
+    // 背景：JPG 强制填充；PNG 始终保持透明（保留原图透明通道，不填充背景色）
     if (format === 'jpg') {
         outCtx.fillStyle = bg;
         outCtx.fillRect(0, 0, outW, outH);
@@ -767,7 +844,7 @@ async function convertFileToImage(file, onProgress) {
         outCtx.clearRect(0, 0, outW, outH);
     }
     try {
-        outCtx.drawImage(srcCanvas, 0, 0, outW, outH);
+        outCtx.drawImage(srcCanvas, drawParams.dx, drawParams.dy, drawParams.dw, drawParams.dh);
     } catch (err) {
         srcCanvas = null;
         outCanvas = null;
@@ -918,6 +995,37 @@ on(qualityRange, 'input', () => {
     qualityValue.textContent = parseFloat(qualityRange.value).toFixed(2);
 }, 'qualityRange.input');
 
+// ============== 输出尺寸模式切换 ==============
+function refreshResizePanel() {
+    const mode = getResizeMode();
+    document.querySelectorAll('.resize-panel').forEach(el => el.classList.add('hidden'));
+    const active = document.getElementById('resizePanel-' + mode);
+    if (active) active.classList.remove('hidden');
+}
+resizeModeRadios.forEach(r => on(r, 'change', refreshResizePanel, 'resizeMode.change'));
+refreshResizePanel();
+
+if (maxSidePresetsEl) {
+    on(maxSidePresetsEl, 'click', (e) => {
+        const btn = e.target.closest('button[data-v]');
+        if (!btn) return;
+        if (maxSizeInput) maxSizeInput.value = btn.dataset.v;
+    }, 'maxSidePresets.click');
+}
+
+function clampIntInput(inputEl, min, max) {
+    if (!inputEl) return;
+    on(inputEl, 'blur', () => {
+        const v = parseInt(inputEl.value, 10);
+        if (isNaN(v) || v <= 0) { inputEl.value = ''; return; }
+        if (v < min) inputEl.value = String(min);
+        else if (v > max) inputEl.value = String(max);
+    }, inputEl.id + '.blur');
+}
+clampIntInput(maxSizeInput, 16, 16384);
+clampIntInput(targetWInput, 1, 16384);
+clampIntInput(targetHInput, 1, 16384);
+
 // 背景色
 on(bgColorInput, 'input', () => {
     bgColorText.value = bgColorInput.value;
@@ -980,6 +1088,19 @@ function refreshFormatUI() {
             ? 'PNG：无损压缩、保留透明通道；体积较大，适合图标、UI 切图等素材'
             : 'JPG：体积小、适合照片类素材；不支持透明（透明区将按背景色填充）';
     }
+    // PNG 时：禁用"透明区域填充"（输出始终保持透明）
+    const bgGroup   = document.getElementById('bgColorGroup');
+    const bgBadge   = document.getElementById('bgColorDisabledBadge');
+    const bgHint    = document.getElementById('bgColorHint');
+    const isPng     = fmt === 'png';
+    if (bgGroup) {
+        bgGroup.classList.toggle('opacity-50', isPng);
+        bgGroup.classList.toggle('pointer-events-none', isPng);
+    }
+    if (bgColorInput) bgColorInput.disabled = isPng;
+    if (bgColorText)  bgColorText.disabled  = isPng;
+    if (bgBadge) bgBadge.classList.toggle('hidden', !isPng);
+    if (bgHint)  bgHint.classList.toggle('hidden',  !isPng);
     // 更新所有任务的输出文件名（扩展名）
     state.tasks.forEach(t => { t.outName = buildOutputName(t.name); });
 }
@@ -1115,6 +1236,25 @@ convertBtn.addEventListener('click', async () => {
         return;
     }
 
+    // 【关键修复】用户点击"开始转换"时，无论任务之前是什么状态（success/saved/error），
+    // 都强制重置为 pending 并清空上一轮产物，确保调整参数后可以重新按新参数跑。
+    // 这段逻辑必须放在所有 early return 之前，避免用户多次点击重置不生效。
+    state.tasks.forEach(t => {
+        if (t.status !== 'processing') {
+            if (t.jpgBlob) {
+                try { URL.revokeObjectURL(t.jpgBlobUrl); } catch (_) {}
+                t.jpgBlob = null;
+                t.jpgBlobUrl = null;
+            }
+            t.status = 'pending';
+            t.progress = 0;
+            t.error = '';
+            t.outSize = 0;
+            t.outName = buildOutputName(t.name);
+            renderTask(t);
+        }
+    });
+
     // 批次健康度校验
     const assess = evaluateBatch();
     if (assess.level === 'danger') {
@@ -1190,8 +1330,19 @@ convertBtn.addEventListener('click', async () => {
     convertBtn.innerHTML = '<i class="fa-solid fa-spinner spin mr-2"></i>转换中...';
     overallProgressWrap.classList.remove('hidden');
 
-    // 需要处理的任务（排除已成功）
-    const queue = state.tasks.filter(t => t.status !== 'success' && t.status !== 'saved');
+    // 处理队列：所有非 processing 的任务都重新跑（上面已经把成功/失败都重置为 pending）
+    const queue = state.tasks.filter(t => t.status === 'pending' || t.status === 'processing');
+
+    // 兜底：如果没有可转换的任务，直接恢复按钮并提示
+    if (queue.length === 0) {
+        state.converting = false;
+        convertBtn.disabled = state.tasks.length === 0;
+        convertBtn.innerHTML = '<i class="fa-solid fa-play mr-2"></i>开始转换';
+        overallProgressWrap.classList.add('hidden');
+        toast('没有可转换的任务，请重新上传文件', 'warn');
+        return;
+    }
+
     let done = 0;
     overallProgressText.textContent = `0 / ${queue.length}`;
     overallProgressBar.style.width = '0%';
@@ -1404,23 +1555,21 @@ function setParamsCollapsed(collapsed) {
     }
 }
 
-// 桌面端默认展开，手机端默认折叠
+// 桌面端默认展开，仅真正的移动端（UA 判定）默认折叠；避免 PC 端窄窗口被误判
 if (paramsCollapse) {
-    // lg 以下（< 1024px）视为窄屏，折叠
-    const narrowScreen = window.matchMedia('(max-width: 1023px)').matches;
-    if (narrowScreen) {
+    if (IS_MOBILE) {
         setParamsCollapsed(true);
     } else {
         setParamsCollapsed(false);
     }
 }
 
-// 点击标题行切换折叠状态（仅在窄屏生效；大屏上 header 是 cursor-default，点击也不影响）
+// 点击标题行切换折叠状态（仅在移动端生效；PC 端无论窗口多窄都保持展开）
 on(paramsHeader, 'click', (e) => {
     // 开关的 label/input 点击不触发折叠
     if (e.target.closest('label') || e.target.closest('input')) return;
-    // 仅在 lg 以下生效
-    if (window.matchMedia('(min-width: 1024px)').matches) return;
+    // 仅在移动端生效
+    if (!IS_MOBILE) return;
     const isHidden = paramsCollapse.classList.contains('hidden');
     setParamsCollapsed(!isHidden);
 }, 'paramsHeader.click');
@@ -1428,11 +1577,11 @@ on(paramsHeader, 'click', (e) => {
 // 视口尺寸变化时重新评估（例如横竖屏切换）
 window.addEventListener('resize', () => {
     if (!paramsCollapse) return;
-    if (window.matchMedia('(min-width: 1024px)').matches) {
-        // 大屏始终展开
+    // PC 端始终保持展开，不受窗口宽度影响
+    if (!IS_MOBILE) {
         setParamsCollapsed(false);
     }
-    // 小屏保持用户当前选择，不做自动折叠
+    // 移动端保持用户当前选择，不做自动折叠
 });
 
 // --- 3. 手机端自动切换保存模式：目录模式不可用 → 默认 ZIP ---

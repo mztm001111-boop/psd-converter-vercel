@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head><script src="https://with.woa.com/d2c/assets/iframe.js?_t=1776913808809"></script>
+<head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -696,8 +696,8 @@ header .rounded-xl.bg-gradient-to-br {
                         </label>
                     </div>
 
-                    <!-- 可折叠主体（手机端默认折叠） -->
-                    <div id="paramsCollapse" class="hidden lg:block">
+                    <!-- 可折叠主体（手机端默认折叠，由 JS 根据 UA 判定后添加 hidden） -->
+                    <div id="paramsCollapse" class="block">
                     <!-- 输出格式选择（独立，不受参数开关控制） -->
                     <div class="px-5 pt-4 pb-1">
                         <div class="flex items-center justify-between mb-2">
@@ -751,29 +751,108 @@ header .rounded-xl.bg-gradient-to-br {
                             </div>
                         </div>
 
-                        <!-- 最大尺寸 -->
+                        <!-- 输出尺寸（3 选 1） -->
                         <div>
-                            <label class="text-sm font-medium text-slate-700 block mb-2">最大边长（像素）</label>
-                            <select id="maxSize" class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
-                                <option value="0">保持原始尺寸</option>
-                                <option value="800">800 px</option>
-                                <option value="1280">1280 px</option>
-                                <option value="1920" selected>1920 px</option>
-                                <option value="2560">2560 px</option>
-                                <option value="4096">4096 px</option>
-                            </select>
-                            <p class="text-xs text-slate-400 mt-1.5">超过此尺寸将等比缩放</p>
+                            <label class="text-sm font-medium text-slate-700 block mb-2">
+                                <i class="fa-solid fa-expand text-brand-500 mr-1"></i>输出尺寸
+                            </label>
+
+                            <!-- 模式切换 -->
+                            <div class="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl mb-3" id="resizeModeSwitch">
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="resizeMode" value="original" checked class="sr-only peer" />
+                                    <div class="text-center py-1.5 rounded-lg text-xs font-medium text-slate-600 peer-checked:bg-white peer-checked:text-brand-600 peer-checked:shadow-sm peer-checked:ring-1 peer-checked:ring-brand-200 transition">
+                                        <i class="fa-solid fa-image mr-1"></i>原尺寸
+                                    </div>
+                                </label>
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="resizeMode" value="maxSide" class="sr-only peer" />
+                                    <div class="text-center py-1.5 rounded-lg text-xs font-medium text-slate-600 peer-checked:bg-white peer-checked:text-brand-600 peer-checked:shadow-sm peer-checked:ring-1 peer-checked:ring-brand-200 transition">
+                                        <i class="fa-solid fa-ruler mr-1"></i>最大边长
+                                    </div>
+                                </label>
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="resizeMode" value="wh" class="sr-only peer" />
+                                    <div class="text-center py-1.5 rounded-lg text-xs font-medium text-slate-600 peer-checked:bg-white peer-checked:text-brand-600 peer-checked:shadow-sm peer-checked:ring-1 peer-checked:ring-brand-200 transition">
+                                        <i class="fa-solid fa-up-down-left-right mr-1"></i>宽×高
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- 子面板：原尺寸 -->
+                            <div id="resizePanel-original" class="resize-panel text-xs text-slate-500 px-1">
+                                <i class="fa-solid fa-circle-info text-brand-400 mr-1"></i>
+                                保留 PSD/图片的原始像素尺寸，不做任何缩放
+                            </div>
+
+                            <!-- 子面板：最大边长 -->
+                            <div id="resizePanel-maxSide" class="resize-panel hidden">
+                                <div class="flex items-center gap-2">
+                                    <input id="maxSizeInput" type="number" min="16" max="16384" step="1" value="1920"
+                                        class="flex-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                                    <span class="text-xs text-slate-500 whitespace-nowrap">px</span>
+                                </div>
+                                <div class="flex flex-wrap gap-1.5 mt-2" id="maxSidePresets">
+                                    <button type="button" data-v="800"  class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-brand-100 hover:text-brand-700 text-[11px] text-slate-600 transition">800</button>
+                                    <button type="button" data-v="1280" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-brand-100 hover:text-brand-700 text-[11px] text-slate-600 transition">1280</button>
+                                    <button type="button" data-v="1920" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-brand-100 hover:text-brand-700 text-[11px] text-slate-600 transition">1920</button>
+                                    <button type="button" data-v="2560" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-brand-100 hover:text-brand-700 text-[11px] text-slate-600 transition">2560</button>
+                                    <button type="button" data-v="4096" class="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-brand-100 hover:text-brand-700 text-[11px] text-slate-600 transition">4096</button>
+                                </div>
+                                <p class="text-[11px] text-slate-400 mt-1.5">
+                                    <i class="fa-solid fa-circle-info mr-1"></i>
+                                    超过此长边等比缩放；未超过保持原尺寸
+                                </p>
+                            </div>
+
+                            <!-- 子面板：宽×高 -->
+                            <div id="resizePanel-wh" class="resize-panel hidden">
+                                <div class="flex items-center gap-2">
+                                    <div class="flex-1">
+                                        <label class="block text-[11px] text-slate-500 mb-1">宽 (px)</label>
+                                        <input id="targetWInput" type="number" min="1" max="16384" step="1" value="1200"
+                                            placeholder="自动"
+                                            class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                                    </div>
+                                    <div class="pt-5 text-slate-400"><i class="fa-solid fa-xmark"></i></div>
+                                    <div class="flex-1">
+                                        <label class="block text-[11px] text-slate-500 mb-1">高 (px)</label>
+                                        <input id="targetHInput" type="number" min="1" max="16384" step="1" value="800"
+                                            placeholder="自动"
+                                            class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                                    </div>
+                                </div>
+                                <div class="mt-2.5">
+                                    <label class="block text-[11px] text-slate-500 mb-1">适配模式</label>
+                                    <select id="fitMode" class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                                        <option value="contain">等比缩放（contain · 完整可见 · 可能留白）</option>
+                                        <option value="cover">等比裁剪（cover · 铺满画布 · 裁掉溢出）</option>
+                                        <option value="fill">强制拉伸（fill · 忽略原图比例）</option>
+                                    </select>
+                                </div>
+                                <p class="text-[11px] text-slate-400 mt-1.5">
+                                    <i class="fa-solid fa-circle-info mr-1"></i>
+                                    宽或高留空时将按另一维度等比推算
+                                </p>
+                            </div>
                         </div>
 
-                        <!-- 背景色 -->
-                        <div>
-                            <label class="text-sm font-medium text-slate-700 block mb-2">透明区域填充</label>
+                        <!-- 背景色（仅 JPG 格式有效；PNG 默认透明输出） -->
+                        <div id="bgColorGroup">
+                            <label class="text-sm font-medium text-slate-700 block mb-2">
+                                透明区域填充
+                                <span id="bgColorDisabledBadge" class="hidden ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium align-middle">PNG 保留透明</span>
+                            </label>
                             <div class="flex items-center gap-2">
                                 <input id="bgColor" type="color" value="#ffffff"
                                     class="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer" />
                                 <input id="bgColorText" type="text" value="#ffffff"
                                     class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
                             </div>
+                            <p id="bgColorHint" class="text-[11px] text-slate-400 mt-1.5 hidden">
+                                <i class="fa-solid fa-circle-info mr-1"></i>
+                                当前输出为 PNG，将保留原图透明通道，此设置已关闭
+                            </p>
                         </div>
 
                         <!-- 文件名前缀 -->
@@ -846,7 +925,13 @@ const clearBtn         = $('#clearBtn');
 
 const qualityRange     = $('#qualityRange');
 const qualityValue     = $('#qualityValue');
-const maxSizeSel       = $('#maxSize');
+// 输出尺寸模式（3 选 1）
+const resizeModeRadios = document.querySelectorAll('input[name="resizeMode"]');
+const maxSizeInput     = $('#maxSizeInput');
+const maxSidePresetsEl = $('#maxSidePresets');
+const targetWInput     = $('#targetWInput');
+const targetHInput     = $('#targetHInput');
+const fitModeSel       = $('#fitMode');
 const bgColorInput     = $('#bgColor');
 const bgColorText      = $('#bgColorText');
 const prefixInput      = $('#prefix');
@@ -882,19 +967,33 @@ const formatHintEl    = $('#formatHint');
 const formatDescEl    = $('#formatDesc');
 
 const DEFAULT_PARAMS = {
-    quality: 0.95,
-    maxSize: 0,
-    bgColor: '#ffffff',
-    prefix:  ''
+    quality:    0.95,
+    resizeMode: 'original',
+    maxSize:    0,
+    targetW:    0,
+    targetH:    0,
+    fitMode:    'contain',
+    bgColor:    '#ffffff',
+    prefix:     ''
 };
+
+function getResizeMode() {
+    const checked = document.querySelector('input[name="resizeMode"]:checked');
+    return checked ? checked.value : 'original';
+}
 
 function getEffectiveParams() {
     if (paramToggle && paramToggle.checked) {
+        const resizeMode = getResizeMode();
         return {
-            quality: parseFloat(qualityRange.value) || 0.92,
-            maxSize: parseInt(maxSizeSel.value, 10) || 0,
-            bgColor: bgColorInput.value || '#ffffff',
-            prefix:  (prefixInput.value || '').trim()
+            quality:    parseFloat(qualityRange.value) || 0.92,
+            resizeMode,
+            maxSize:    resizeMode === 'maxSide' ? (parseInt(maxSizeInput && maxSizeInput.value, 10) || 0) : 0,
+            targetW:    resizeMode === 'wh' ? (parseInt(targetWInput && targetWInput.value, 10) || 0) : 0,
+            targetH:    resizeMode === 'wh' ? (parseInt(targetHInput && targetHInput.value, 10) || 0) : 0,
+            fitMode:    (fitModeSel && fitModeSel.value) || 'contain',
+            bgColor:    bgColorInput.value || '#ffffff',
+            prefix:     (prefixInput.value || '').trim()
         };
     }
     return { ...DEFAULT_PARAMS };
@@ -1454,29 +1553,79 @@ async function convertFileToImage(file, onProgress) {
     onProgress(72);
 
     const eff = getEffectiveParams();
-    let maxSize = eff.maxSize;
     const quality = eff.quality;
     const bg = eff.bgColor;
     const format = getOutputFormat();
     const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
 
-    const autoCap = isHuge ? LARGE_FILE_CANVAS_MAX_DIM
-                  : isLarge ? SAFE_CANVAS_MAX_DIM
-                  : 0;
-    if (autoCap > 0) {
-        if (maxSize === 0 || maxSize > autoCap) {
-            maxSize = autoCap;
-        }
-    }
-    const HARD_CANVAS_MAX = SAFE_CANVAS_MAX_DIM;
-    const effectiveCap = maxSize > 0 ? Math.min(maxSize, HARD_CANVAS_MAX) : HARD_CANVAS_MAX;
-
+    // === 根据 resizeMode 计算目标画布尺寸与源图绘制参数 ===
     let outW = srcW;
     let outH = srcH;
-    if (Math.max(outW, outH) > effectiveCap) {
-        const ratio = effectiveCap / Math.max(outW, outH);
-        outW = Math.max(1, Math.round(outW * ratio));
-        outH = Math.max(1, Math.round(outH * ratio));
+    let drawParams = { dx: 0, dy: 0, dw: srcW, dh: srcH };
+
+    if (eff.resizeMode === 'maxSide') {
+        let maxSize = eff.maxSize || 0;
+        const autoCap = isHuge ? LARGE_FILE_CANVAS_MAX_DIM
+                      : isLarge ? SAFE_CANVAS_MAX_DIM
+                      : 0;
+        if (autoCap > 0 && (maxSize === 0 || maxSize > autoCap)) {
+            maxSize = autoCap;
+        }
+        const HARD_CANVAS_MAX = SAFE_CANVAS_MAX_DIM;
+        const effectiveCap = maxSize > 0 ? Math.min(maxSize, HARD_CANVAS_MAX) : HARD_CANVAS_MAX;
+        outW = srcW;
+        outH = srcH;
+        if (Math.max(outW, outH) > effectiveCap) {
+            const ratio = effectiveCap / Math.max(outW, outH);
+            outW = Math.max(1, Math.round(outW * ratio));
+            outH = Math.max(1, Math.round(outH * ratio));
+        }
+        drawParams = { dx: 0, dy: 0, dw: outW, dh: outH };
+    } else if (eff.resizeMode === 'wh') {
+        let tw = eff.targetW || 0;
+        let th = eff.targetH || 0;
+        const fit = eff.fitMode || 'contain';
+        if (tw <= 0 && th <= 0) { tw = srcW; th = srcH; }
+        else if (tw <= 0) { tw = Math.max(1, Math.round(srcW * (th / srcH))); }
+        else if (th <= 0) { th = Math.max(1, Math.round(srcH * (tw / srcW))); }
+
+        const autoCap = isHuge ? LARGE_FILE_CANVAS_MAX_DIM
+                      : isLarge ? SAFE_CANVAS_MAX_DIM
+                      : SAFE_CANVAS_MAX_DIM;
+        if (Math.max(tw, th) > autoCap) {
+            const r = autoCap / Math.max(tw, th);
+            tw = Math.max(1, Math.round(tw * r));
+            th = Math.max(1, Math.round(th * r));
+        }
+        outW = tw; outH = th;
+
+        const srcRatio = srcW / srcH;
+        const dstRatio = tw / th;
+        if (fit === 'fill') {
+            drawParams = { dx: 0, dy: 0, dw: tw, dh: th };
+        } else if (fit === 'cover') {
+            let dw, dh;
+            if (srcRatio > dstRatio) { dh = th; dw = Math.round(th * srcRatio); }
+            else { dw = tw; dh = Math.round(tw / srcRatio); }
+            drawParams = { dx: Math.round((tw - dw) / 2), dy: Math.round((th - dh) / 2), dw, dh };
+        } else {
+            let dw, dh;
+            if (srcRatio > dstRatio) { dw = tw; dh = Math.round(tw / srcRatio); }
+            else { dh = th; dw = Math.round(th * srcRatio); }
+            drawParams = { dx: Math.round((tw - dw) / 2), dy: Math.round((th - dh) / 2), dw, dh };
+        }
+    } else {
+        const autoCap = isHuge ? LARGE_FILE_CANVAS_MAX_DIM
+                      : isLarge ? SAFE_CANVAS_MAX_DIM
+                      : 0;
+        if (autoCap > 0 && Math.max(srcW, srcH) > autoCap) {
+            const ratio = autoCap / Math.max(srcW, srcH);
+            outW = Math.max(1, Math.round(srcW * ratio));
+            outH = Math.max(1, Math.round(srcH * ratio));
+        } else {
+            outW = srcW; outH = srcH;
+        }
+        drawParams = { dx: 0, dy: 0, dw: outW, dh: outH };
     }
 
     let outCanvas = document.createElement('canvas');
@@ -1489,9 +1638,13 @@ async function convertFileToImage(file, onProgress) {
         outCtx.fillRect(0, 0, outW, outH);
     } else {
         outCtx.clearRect(0, 0, outW, outH);
+        if (eff.resizeMode === 'wh' && (eff.fitMode || 'contain') === 'contain') {
+            outCtx.fillStyle = bg;
+            outCtx.fillRect(0, 0, outW, outH);
+        }
     }
     try {
-        outCtx.drawImage(srcCanvas, 0, 0, outW, outH);
+        outCtx.drawImage(srcCanvas, drawParams.dx, drawParams.dy, drawParams.dw, drawParams.dh);
     } catch (err) {
         srcCanvas = null;
         outCanvas = null;
@@ -1630,6 +1783,37 @@ on(clearBtn, 'click', () => {
 on(qualityRange, 'input', () => {
     qualityValue.textContent = parseFloat(qualityRange.value).toFixed(2);
 }, 'qualityRange.input');
+
+// ============== 输出尺寸模式切换 ==============
+function refreshResizePanel() {
+    const mode = getResizeMode();
+    document.querySelectorAll('.resize-panel').forEach(el => el.classList.add('hidden'));
+    const active = document.getElementById('resizePanel-' + mode);
+    if (active) active.classList.remove('hidden');
+}
+resizeModeRadios.forEach(r => on(r, 'change', refreshResizePanel, 'resizeMode.change'));
+refreshResizePanel();
+
+if (maxSidePresetsEl) {
+    on(maxSidePresetsEl, 'click', (e) => {
+        const btn = e.target.closest('button[data-v]');
+        if (!btn) return;
+        if (maxSizeInput) maxSizeInput.value = btn.dataset.v;
+    }, 'maxSidePresets.click');
+}
+
+function clampIntInput(inputEl, min, max) {
+    if (!inputEl) return;
+    on(inputEl, 'blur', () => {
+        const v = parseInt(inputEl.value, 10);
+        if (isNaN(v) || v <= 0) { inputEl.value = ''; return; }
+        if (v < min) inputEl.value = String(min);
+        else if (v > max) inputEl.value = String(max);
+    }, inputEl.id + '.blur');
+}
+clampIntInput(maxSizeInput, 16, 16384);
+clampIntInput(targetWInput, 1, 16384);
+clampIntInput(targetHInput, 1, 16384);
 
 on(bgColorInput, 'input', () => {
     bgColorText.value = bgColorInput.value;
@@ -1795,6 +1979,19 @@ convertBtn.addEventListener('click', async () => {
         return;
     }
 
+    // 【关键修复】点击"开始转换"时强制重置任务状态，支持同一批文件调参后重新转换
+    state.tasks.forEach(t => {
+        if (t.status !== 'processing') {
+            t.status = 'pending';
+            t.progress = 0;
+            t.error = '';
+            t.jpgBlob = null;
+            t.outSize = 0;
+            t.outName = buildOutputName(t.name);
+            renderTask(t);
+        }
+    });
+
     const assess = evaluateBatch();
     if (assess.level === 'danger') {
         const ok = window.confirm(
@@ -1864,7 +2061,17 @@ convertBtn.addEventListener('click', async () => {
     convertBtn.innerHTML = '<i class="fa-solid fa-spinner spin mr-2"></i>转换中...';
     overallProgressWrap.classList.remove('hidden');
 
-    const queue = state.tasks.filter(t => t.status !== 'success' && t.status !== 'saved');
+    const queue = state.tasks.filter(t => t.status === 'pending' || t.status === 'processing');
+
+    if (queue.length === 0) {
+        state.converting = false;
+        convertBtn.disabled = state.tasks.length === 0;
+        convertBtn.innerHTML = '<i class="fa-solid fa-play mr-2"></i>开始转换';
+        overallProgressWrap.classList.add('hidden');
+        toast('没有可转换的任务，请重新上传文件', 'warn');
+        return;
+    }
+
     let done = 0;
     overallProgressText.textContent = `0 / ${queue.length}`;
     overallProgressBar.style.width = '0%';
@@ -2062,20 +2269,22 @@ function setParamsCollapsed(collapsed) {
 }
 
 if (paramsCollapse) {
-    const narrowScreen = window.matchMedia('(max-width: 1023px)').matches;
-    setParamsCollapsed(narrowScreen);
+    // 仅移动端（UA 判定）默认折叠，PC 端无论窗口多窄都展开
+    setParamsCollapsed(IS_MOBILE);
 }
 
 on(paramsHeader, 'click', (e) => {
     if (e.target.closest('label') || e.target.closest('input')) return;
-    if (window.matchMedia('(min-width: 1024px)').matches) return;
+    // 仅移动端生效
+    if (!IS_MOBILE) return;
     const isHidden = paramsCollapse.classList.contains('hidden');
     setParamsCollapsed(!isHidden);
 }, 'paramsHeader.click');
 
 window.addEventListener('resize', () => {
     if (!paramsCollapse) return;
-    if (window.matchMedia('(min-width: 1024px)').matches) {
+    // PC 端始终保持展开
+    if (!IS_MOBILE) {
         setParamsCollapsed(false);
     }
 });
