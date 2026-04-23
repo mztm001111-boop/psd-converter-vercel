@@ -1,0 +1,2191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><script src="https://with.woa.com/d2c/assets/iframe.js?_t=1776913808809"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#7c3aed" />
+    <title>图片批量转换工具 · PSD / PNG / JPG / WEBP / GIF / BMP / TIFF / ICO</title>
+    <!-- Tailwind CSS 引入：官方 CDN 是唯一支持 tailwind.config 自定义配色的方案 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 兜底样式：如果 cdn.tailwindcss.com 加载失败，预编译版 tailwind.min.css 会提供基础 utility 类（不支持自定义 brand，但页面不会完全崩） -->
+    <link rel="stylesheet"
+          href="https://cdn.bootcdn.net/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"
+          onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css';" />
+    <!-- Font Awesome：主 cdnjs，备 jsdelivr / unpkg -->
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+          onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css';" />
+    <!-- ag-psd 浏览器端 PSD 解析库（UMD，暴露全局 agPsd） -->
+    <script src="https://unpkg.com/ag-psd@25.0.0/dist/bundle.js"
+            onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/ag-psd@25.0.0/dist/bundle.js';"></script>
+    <!-- UTIF 用于解析 TIFF/TIF 格式（UMD，暴露全局 UTIF） -->
+    <script src="https://unpkg.com/utif@3.1.0/UTIF.js"
+            onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js';"></script>
+    <!-- JSZip 用于打包下载（降级方案） -->
+    <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"
+            onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';"></script>
+    <!-- FileSaver 用于保存文件 -->
+    <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"
+            onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js';"></script>
+    <style>
+/* 细节补充样式 */
+
+/* 拖拽悬停高亮 */
+#dropZone.dragover {
+    border-color: #7c3aed !important;
+    background-color: rgba(124, 58, 237, 0.08) !important;
+    transform: scale(1.01);
+}
+
+/* 任务项淡入 */
+.task-item {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 滚动条美化 */
+#taskList::-webkit-scrollbar {
+    width: 6px;
+}
+
+#taskList::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#taskList::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+#taskList::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* 任务进度条 */
+.progress-bar {
+    transition: width 0.25s ease-out;
+}
+
+/* 状态徽章 */
+.status-pending {
+    background-color: #f1f5f9;
+    color: #64748b;
+}
+
+.status-processing {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+
+.status-success {
+    background-color: #d1fae5;
+    color: #047857;
+}
+
+.status-error {
+    background-color: #fee2e2;
+    color: #b91c1c;
+}
+
+/* 任务缩略图 */
+.task-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #ede9fe, #e0e7ff);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 1px solid #e2e8f0;
+}
+
+.task-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Toast 类型 */
+.toast-success { background: linear-gradient(135deg, #10b981, #059669); }
+.toast-error   { background: linear-gradient(135deg, #ef4444, #dc2626); }
+.toast-info    { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.toast-warn    { background: linear-gradient(135deg, #f59e0b, #d97706); }
+
+/* 旋转动画 */
+.spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* 单选卡选中效果 */
+input[type="radio"]:checked + div { /* JS 控制 */ }
+
+/* ============== 手机端适配样式 ============== */
+* { -webkit-tap-highlight-color: transparent; }
+html.is-mobile, body.is-mobile { -webkit-text-size-adjust: 100%; }
+
+#paramsCollapse { overflow: hidden; transition: max-height 0.35s ease, opacity 0.25s ease; }
+#paramsCollapse.is-collapsed { max-height: 0 !important; opacity: 0; pointer-events: none; }
+#paramsCollapse.is-expanded { max-height: 2000px; opacity: 1; }
+#paramsChevron.is-expanded { transform: rotate(180deg); }
+
+.save-card.is-disabled {
+    opacity: 0.55;
+    cursor: not-allowed !important;
+    background-color: #f8fafc !important;
+    border-color: #e2e8f0 !important;
+}
+.save-card.is-disabled::after {
+    content: "移动端不可用";
+    position: absolute;
+    right: 0.75rem; top: 0.5rem;
+    font-size: 10px; padding: 2px 6px;
+    border-radius: 999px;
+    background: #fee2e2; color: #b91c1c;
+    font-weight: 500;
+}
+.save-card.is-disabled input[type="radio"] { pointer-events: none; }
+#mobileEntries label:active { filter: brightness(0.95); }
+
+@media (max-width: 639px) {
+    main { padding: 1.25rem 1rem 5.5rem !important; }
+    section.mb-10.text-center { margin-bottom: 1.25rem !important; }
+    section.mb-10.text-center h2 { font-size: 1.75rem !important; line-height: 1.25 !important; }
+    section.mb-10.text-center p { font-size: 0.8125rem !important; margin-top: 0.75rem !important; }
+    #help { padding: 1.25rem !important; margin-bottom: 1.25rem !important; }
+    #help h3 { font-size: 1rem !important; margin-bottom: 0 !important; }
+    #help.is-collapsed > *:not(h3):not(#helpToggleHint) { display: none !important; }
+    #upload .p-5, #saveSection .p-5 { padding: 1rem !important; }
+    #upload .px-5.py-3, #saveSection .px-5.py-3, #settings .px-5.py-3 { padding: 0.75rem 1rem !important; }
+    #dropZone { padding: 0.75rem !important; }
+    #dropZone > div:first-child { width: 2.5rem !important; height: 2.5rem !important; }
+    #dropZone > div:first-child i { font-size: 1rem !important; }
+    #batchStats .grid { grid-template-columns: repeat(2, 1fr) !important; }
+    #batchStats .grid > div { border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; }
+    #batchStats .grid > div:nth-child(2n) { border-right: none; }
+    #batchStats .grid > div:nth-last-child(-n+2) { border-bottom: none; }
+    .save-card { min-height: 60px !important; padding: 0.625rem !important; }
+    .save-card > div.w-9 { width: 2.25rem !important; height: 2.25rem !important; }
+    .save-card p.text-sm { font-size: 0.8125rem !important; }
+    .save-card p.text-xs { font-size: 0.6875rem !important; white-space: normal !important; overflow: visible !important; }
+    .is-mobile #pickDirBtn { display: none !important; }
+    .save-card #zipSplitWrap { align-self: flex-end; }
+    #saveSection .mt-auto.mb-5.pt-5 { margin-top: 1rem !important; margin-bottom: 0.75rem !important; padding-top: 0.75rem !important; }
+    #convertBtn { padding-top: 1rem !important; padding-bottom: 1rem !important; font-size: 1rem !important; border-radius: 1rem !important; }
+    #paramsHeader { padding: 0.875rem 1rem !important; }
+    #taskList .task-item { padding: 0.75rem 1rem !important; gap: 0.625rem !important; flex-wrap: wrap; }
+    #taskList .task-item .task-thumb { width: 40px !important; height: 40px !important; }
+    #taskList .task-item p.text-sm { font-size: 0.8125rem !important; }
+    #taskList .task-item > div.flex-shrink-0 { width: 100%; justify-content: flex-end; margin-top: 0.25rem; padding-left: 50px; }
+    #taskList .task-item > div.flex-1 { min-width: calc(100% - 56px); }
+    #taskList { max-height: none !important; }
+    header p.text-xs { display: none; }
+    header h1 { font-size: 0.95rem !important; }
+    #help ul { font-size: 11px !important; }
+    #toast { top: env(safe-area-inset-top, 0.5rem) !important; left: 0.75rem; right: 0.75rem; text-align: center; }
+}
+
+@media (hover: none) {
+    #dropZone:hover {
+        border-color: #cbd5e1 !important;
+        background-color: transparent !important;
+        transform: none !important;
+    }
+}
+
+/* ============== 防御性兜底样式（Tailwind CDN 或自定义 brand 配色未加载时，确保关键渐变可见） ============== */
+.bg-gradient-to-br.from-brand-500.to-indigo-500 {
+    background-image: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%) !important;
+}
+.bg-gradient-to-r.from-brand-500.to-indigo-500 {
+    background-image: linear-gradient(to right, #8b5cf6 0%, #6366f1 100%) !important;
+}
+.bg-gradient-to-r.from-brand-600.via-indigo-600.to-pink-500 {
+    background-image: linear-gradient(to right, #7c3aed 0%, #4f46e5 50%, #ec4899 100%) !important;
+}
+.shadow-brand-500\/30 {
+    box-shadow: 0 10px 15px -3px rgba(139, 92, 246, 0.3), 0 4px 6px -4px rgba(139, 92, 246, 0.3) !important;
+}
+.shadow-brand-500\/40 {
+    box-shadow: 0 20px 25px -5px rgba(139, 92, 246, 0.4), 0 8px 10px -6px rgba(139, 92, 246, 0.4) !important;
+}
+.shadow-brand-500\/50 {
+    box-shadow: 0 25px 50px -12px rgba(139, 92, 246, 0.5) !important;
+}
+.text-brand-500 { color: #8b5cf6 !important; }
+.text-brand-600 { color: #7c3aed !important; }
+.text-brand-700 { color: #6d28d9 !important; }
+.bg-brand-50  { background-color: #f5f3ff !important; }
+.bg-brand-100 { background-color: #ede9fe !important; }
+.bg-brand-500 { background-color: #8b5cf6 !important; }
+.bg-brand-600 { background-color: #7c3aed !important; }
+.border-brand-400 { border-color: #a78bfa !important; }
+.border-brand-500 { border-color: #8b5cf6 !important; }
+.accent-brand-600 { accent-color: #7c3aed !important; }
+h2.bg-gradient-to-r.from-brand-600.via-indigo-600.to-pink-500.bg-clip-text {
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    color: transparent !important;
+}
+/* 转换按钮核心兜底（保证在任何情况下都显示紫蓝粉渐变） */
+#convertBtn {
+    background-image: linear-gradient(to right, #7c3aed 0%, #4f46e5 50%, #ec4899 100%) !important;
+    color: #fff !important;
+    box-shadow: 0 20px 25px -5px rgba(139, 92, 246, 0.4), 0 8px 10px -6px rgba(139, 92, 246, 0.4) !important;
+}
+#convertBtn:disabled {
+    opacity: 0.4 !important;
+    cursor: not-allowed !important;
+    filter: grayscale(0.2);
+}
+/* 顶栏 Logo / 上传区主图标兜底 */
+header .rounded-xl.bg-gradient-to-br {
+    background-image: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%) !important;
+    color: #fff !important;
+}
+#dropZone .rounded-xl.bg-gradient-to-br,
+#dropZone .rounded-2xl.bg-gradient-to-br {
+    background-image: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%) !important;
+    color: #fff !important;
+}
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50:  '#f5f3ff',
+                            100: '#ede9fe',
+                            200: '#ddd6fe',
+                            300: '#c4b5fd',
+                            400: '#a78bfa',
+                            500: '#8b5cf6',
+                            600: '#7c3aed',
+                            700: '#6d28d9',
+                            800: '#5b21b6',
+                            900: '#4c1d95'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"PingFang SC"', '"Microsoft YaHei"', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        };
+    </script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-indigo-50 font-sans text-slate-800">
+
+    <!-- 启动加载遮罩 + CDN 超时兜底 -->
+    <div id="bootLoader" style="position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#f5f3ff,#e0e7ff);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;font-family:'PingFang SC','Microsoft YaHei',system-ui,sans-serif;">
+        <div style="width:64px;height:64px;border:4px solid #ddd6fe;border-top-color:#7c3aed;border-radius:50%;animation:bootSpin 1s linear infinite;"></div>
+        <p id="bootLoaderText" style="margin-top:20px;font-size:15px;color:#475569;font-weight:500;">正在加载资源，请稍候…</p>
+        <p id="bootLoaderHint" style="margin-top:8px;font-size:12px;color:#94a3b8;">首次打开需要下载约 2MB 依赖</p>
+        <div id="bootLoaderError" style="display:none;max-width:420px;margin-top:16px;padding:16px;background:#fff;border:1px solid #fecaca;border-radius:12px;color:#991b1b;font-size:13px;line-height:1.6;text-align:left;">
+            <p style="font-weight:600;margin-bottom:8px;color:#b91c1c;">⚠️ 加载超时</p>
+            <p>部分资源加载失败，可能原因：</p>
+            <ul style="margin:6px 0 10px 18px;list-style:disc;color:#7f1d1d;">
+                <li>当前网络无法访问 CDN（试试切换 WiFi / 4G）</li>
+                <li>在微信/企业微信内打开（请右上角 ···→ 用浏览器打开）</li>
+            </ul>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+                <button onclick="location.reload()" style="flex:1;padding:10px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;">🔄 重新加载</button>
+            </div>
+            <p id="bootLoaderDetail" style="margin-top:10px;font-size:11px;color:#9ca3af;word-break:break-all;"></p>
+        </div>
+    </div>
+    <style>@keyframes bootSpin{to{transform:rotate(360deg);}}</style>
+    <script>
+    (function(){
+        // 监听全部关键依赖是否就绪
+        var requiredLibs = [
+            { name: 'Tailwind', check: function(){ return !!(window.tailwind || document.querySelector('style[data-tailwind]') || getComputedStyle(document.body).getPropertyValue('--tw-ring-offset-shadow') !== ''); } },
+            { name: 'ag-psd',   check: function(){ return typeof window.agPsd !== 'undefined'; } },
+            { name: 'UTIF',     check: function(){ return typeof window.UTIF !== 'undefined'; } },
+            { name: 'JSZip',    check: function(){ return typeof window.JSZip !== 'undefined'; } },
+            { name: 'FileSaver',check: function(){ return typeof window.saveAs !== 'undefined'; } }
+        ];
+        var startTime = Date.now();
+        var timer = setInterval(function(){
+            var missing = requiredLibs.filter(function(l){ try { return !l.check(); } catch(e){ return true; } });
+            if (missing.length === 0) {
+                clearInterval(timer);
+                // 依赖齐全，等 main.js 跑完再隐藏
+                var hideTimer = setInterval(function(){
+                    if (window.__APP_READY__ || Date.now() - startTime > 15000) {
+                        clearInterval(hideTimer);
+                        var el = document.getElementById('bootLoader');
+                        if (el) { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(function(){ el.remove(); }, 300); }
+                    }
+                }, 200);
+            } else if (Date.now() - startTime > 8000) {
+                // 8 秒还没加载完 —— 报错
+                clearInterval(timer);
+                var t = document.getElementById('bootLoaderText');
+                var h = document.getElementById('bootLoaderHint');
+                var e = document.getElementById('bootLoaderError');
+                var d = document.getElementById('bootLoaderDetail');
+                if (t) t.style.display = 'none';
+                if (h) h.style.display = 'none';
+                if (e) e.style.display = 'block';
+                if (d) d.textContent = '未加载的模块: ' + missing.map(function(m){return m.name;}).join(', ');
+            }
+        }, 300);
+    })();
+    </script>
+
+    <!-- 顶部导航 -->
+    <header class="sticky top-0 z-30 backdrop-blur-lg bg-white/70 border-b border-white/60 shadow-sm">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/30">
+                    <i class="fa-solid fa-images text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-slate-800">PSD Batch Converter</h1>
+                    <p class="text-xs text-slate-500">批量 PSD 转 JPG · 浏览器端运行 · 零上传</p>
+                </div>
+            </div>
+            <nav class="hidden md:flex items-center gap-6 text-sm text-slate-600">
+                <a href="#upload" class="hover:text-brand-600 transition"><i class="fa-solid fa-cloud-arrow-up mr-1"></i>上传</a>
+                <a href="#settings" class="hover:text-brand-600 transition"><i class="fa-solid fa-sliders mr-1"></i>参数</a>
+                <a href="#saveSection" class="hover:text-brand-600 transition"><i class="fa-solid fa-folder-tree mr-1"></i>保存</a>
+                <a href="#list" class="hover:text-brand-600 transition"><i class="fa-solid fa-list-check mr-1"></i>任务</a>
+                <a href="#help" class="hover:text-brand-600 transition"><i class="fa-solid fa-circle-question mr-1"></i>帮助</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-10">
+
+        <!-- Hero 区 -->
+        <section class="mb-10 text-center">
+            <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-100 text-brand-700 text-xs font-medium mb-4">
+                <i class="fa-solid fa-bolt"></i>
+                完全本地处理 · 文件不会上传任何服务器
+            </span>
+            <h2 class="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-brand-600 via-indigo-600 to-pink-500 bg-clip-text text-transparent leading-tight">
+                一键批量图片转 JPG / PNG
+            </h2>
+            <p class="mt-4 text-slate-600 max-w-2xl mx-auto">
+                支持 <b>PSD / PNG / JPG / WEBP / GIF / BMP / TIFF / ICO</b> 等多种格式输入，自由选择输出为 JPG 或 PNG，自定义质量、尺寸和文件名规则，可直接保存到指定文件夹或一键打包下载。
+            </p>
+        </section>
+
+        <!-- 使用说明（置顶） -->
+        <section id="help" class="mb-10 bg-white/70 backdrop-blur rounded-2xl border border-white shadow-sm p-8">
+            <h3 class="font-bold text-xl text-slate-800 mb-6 flex items-center gap-2">
+                <i class="fa-solid fa-circle-question text-brand-500"></i>
+                使用说明
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="p-5 rounded-xl bg-gradient-to-br from-brand-50 to-indigo-50 border border-brand-100">
+                    <div class="w-10 h-10 rounded-lg bg-brand-600 text-white flex items-center justify-center font-bold mb-3">1</div>
+                    <h4 class="font-semibold text-slate-800 mb-1">上传图片文件</h4>
+                    <p class="text-sm text-slate-600">拖拽或点击上传区，支持 PSD、PNG、JPG、WEBP、GIF、BMP、TIFF、ICO 等多种格式，一次可选多个。</p>
+                </div>
+                <div class="p-5 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100">
+                    <div class="w-10 h-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold mb-3">2</div>
+                    <h4 class="font-semibold text-slate-800 mb-1">配置参数和保存方式</h4>
+                    <p class="text-sm text-slate-600">选择输出 JPG / PNG，调整质量、尺寸，或选择"保存到指定文件夹"并授权本地目录。</p>
+                </div>
+                <div class="p-5 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100">
+                    <div class="w-10 h-10 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold mb-3">3</div>
+                    <h4 class="font-semibold text-slate-800 mb-1">一键开始转换</h4>
+                    <p class="text-sm text-slate-600">点击"开始转换"，图片将自动写入指定目录或打包下载。</p>
+                </div>
+            </div>
+
+            <div class="mt-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800 flex gap-3">
+                <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+                <div>
+                    <p class="font-semibold mb-1">浏览器兼容性提示</p>
+                    <p>"保存到指定文件夹"功能基于 <code class="px-1 py-0.5 bg-white rounded text-xs">File System Access API</code>，目前在 Chrome 86+ / Edge 86+ 等现代浏览器中可用。Firefox、Safari 请使用"ZIP 下载"或"逐个下载"方式。</p>
+                </div>
+            </div>
+
+            <div class="mt-4 p-4 rounded-xl bg-indigo-50 border border-indigo-200 text-sm text-indigo-800 flex gap-3">
+                <i class="fa-solid fa-wand-magic-sparkles mt-0.5"></i>
+                <div>
+                    <p class="font-semibold mb-1">大文件贴士（偶发场景）</p>
+                    <ul class="list-disc list-inside space-y-0.5 text-xs leading-relaxed">
+                        <li>推荐单个文件 ≤ <b>800MB</b>（PSD 尤其受限）；超过 300MB 会自动降采样（最大边长压到 8192px，超 800MB 压到 4096px）。</li>
+                        <li>处理大文件时推荐使用 <b>"保存到指定文件夹"</b> 模式——转换后立即写盘并释放内存，可连续处理多个大文件。</li>
+                        <li>超过 <b>2GB</b> 的单文件受浏览器 ArrayBuffer 上限限制，无法处理，请使用桌面工具预处理。</li>
+                        <li>TIFF 多页文件目前只转换第一页；ICO 多尺寸图标将自动选择最大尺寸帧。</li>
+                        <li>如果转换中途卡顿，建议关闭其他占内存的标签页，或将"最大边长"手动调到 2560px 以下。</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 主工作区：上传 + 参数（左右两列 · 底部对齐） -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:items-stretch">
+
+            <!-- 左侧：上传区 -->
+            <div class="lg:col-span-2 flex flex-col gap-4">
+
+                <!-- 上传区 -->
+                <section id="upload" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                        <h3 class="font-semibold text-slate-800 flex items-center gap-2 text-sm">
+                            <i class="fa-solid fa-cloud-arrow-up text-brand-500"></i>
+                            文件上传
+                        </h3>
+                        <span id="fileCountBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">0 个文件</span>
+                    </div>
+
+                    <div class="p-5">
+                        <label id="dropZone" for="fileInput"
+                            class="group relative flex items-center gap-4 w-full py-4 px-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-brand-400 hover:bg-brand-50/40 transition-all">
+                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-indigo-500 text-white flex items-center justify-center shadow-md shadow-brand-500/30 group-hover:scale-110 transition flex-shrink-0">
+                                <i class="fa-solid fa-file-arrow-up text-lg"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-slate-700 font-medium text-sm">
+                                    <span class="hidden sm:inline">将图片文件拖到此处，或 </span><span class="text-brand-600 underline">点击选择</span>
+                                </p>
+                                <p class="text-xs text-slate-400 mt-0.5">
+                                    <i class="fa-solid fa-circle-check text-emerald-500 mr-1"></i>支持 PSD / PNG / JPG / WEBP / GIF / BMP / TIFF / ICO · 可多选
+                                </p>
+                            </div>
+                            <span class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-50 text-brand-600 text-xs font-medium flex-shrink-0 group-hover:bg-brand-100 transition">
+                                <i class="fa-solid fa-plus"></i>
+                                添加文件
+                            </span>
+                            <!-- 主输入：桌面端保留图片白名单，手机端被 JS 动态改为 */* 以兼容企业微信 WebView -->
+                            <input id="fileInput" type="file" accept="image/*,.psd,.tif,.tiff,.ico" multiple class="hidden" />
+                        </label>
+
+                        <!-- 手机端专用：三入口快捷按钮 -->
+                        <div id="mobileEntries" class="mt-3 grid grid-cols-3 gap-2 sm:hidden">
+                            <label for="cameraInput"
+                                class="flex flex-col items-center justify-center py-3 px-2 rounded-xl bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-100 active:scale-95 transition cursor-pointer">
+                                <div class="w-9 h-9 rounded-lg bg-rose-500 text-white flex items-center justify-center mb-1 shadow-sm shadow-rose-500/30">
+                                    <i class="fa-solid fa-camera"></i>
+                                </div>
+                                <span class="text-xs font-medium text-slate-700">拍照</span>
+                                <input id="cameraInput" type="file" accept="image/*" capture="environment" class="hidden" />
+                            </label>
+                            <label for="albumInput"
+                                class="flex flex-col items-center justify-center py-3 px-2 rounded-xl bg-gradient-to-br from-sky-50 to-indigo-50 border border-sky-100 active:scale-95 transition cursor-pointer">
+                                <div class="w-9 h-9 rounded-lg bg-sky-500 text-white flex items-center justify-center mb-1 shadow-sm shadow-sky-500/30">
+                                    <i class="fa-solid fa-images"></i>
+                                </div>
+                                <span class="text-xs font-medium text-slate-700">相册</span>
+                                <input id="albumInput" type="file" accept="image/*" multiple class="hidden" />
+                            </label>
+                            <label for="fileInput" id="mobileFileEntry"
+                                class="flex flex-col items-center justify-center py-3 px-2 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 active:scale-95 transition cursor-pointer">
+                                <div class="w-9 h-9 rounded-lg bg-emerald-500 text-white flex items-center justify-center mb-1 shadow-sm shadow-emerald-500/30">
+                                    <i class="fa-solid fa-folder-open"></i>
+                                </div>
+                                <span class="text-xs font-medium text-slate-700">文件</span>
+                            </label>
+                        </div>
+
+                        <!-- 企业微信 / 移动端专用提示（JS 动态显示） -->
+                        <div id="wxworkTip" class="hidden mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                            <div class="flex items-start gap-2">
+                                <i class="fa-solid fa-triangle-exclamation mt-0.5 text-amber-500"></i>
+                                <div class="flex-1">
+                                    <p class="font-semibold mb-1">检测到您正在企业微信内浏览</p>
+                                    <p class="leading-relaxed">
+                                        企业微信内置浏览器对文件上传有限制，如果"文件"按钮无反应或选不到 PSD：
+                                    </p>
+                                    <ol class="list-decimal list-inside mt-1 space-y-0.5">
+                                        <li>点击右上角 <b>···</b> → 选择<b>「在浏览器中打开」</b>（推荐 Chrome / Safari）</li>
+                                        <li>或直接复制网址到系统浏览器中打开</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="mt-2 text-[11px] text-slate-400 sm:hidden text-center">
+                            <i class="fa-solid fa-mobile-screen-button mr-1 text-brand-400"></i>
+                            手机端提示：PSD 文件请使用"文件"入口；相册入口只支持常见图片格式
+                        </p>
+
+                        <!-- 批次风险评估 -->
+                        <div id="batchStats" class="hidden mt-3 rounded-xl border border-slate-200 bg-slate-50/60 overflow-hidden" data-keep="true">
+                            <div class="px-4 py-3 border-b border-slate-200 bg-white flex items-center justify-between">
+                                <div class="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                    <i class="fa-solid fa-gauge-high text-brand-500"></i>
+                                    当前批次评估
+                                </div>
+                                <span id="batchLevelBadge" class="text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-medium">
+                                    <i class="fa-solid fa-circle-check mr-1"></i>安全
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-0 divide-x divide-slate-200 text-center">
+                                <div class="px-3 py-3">
+                                    <p class="text-[11px] text-slate-500 mb-0.5">文件数</p>
+                                    <p class="text-base font-bold text-slate-800"><span id="batchCount">0</span></p>
+                                </div>
+                                <div class="px-3 py-3">
+                                    <p class="text-[11px] text-slate-500 mb-0.5">总大小</p>
+                                    <p class="text-base font-bold text-slate-800" id="batchTotalSize">0 B</p>
+                                </div>
+                                <div class="px-3 py-3">
+                                    <p class="text-[11px] text-slate-500 mb-0.5">最大单文件</p>
+                                    <p class="text-base font-bold text-slate-800" id="batchMaxSize">—</p>
+                                </div>
+                                <div class="px-3 py-3">
+                                    <p class="text-[11px] text-slate-500 mb-0.5">建议上限</p>
+                                    <p class="text-base font-bold text-brand-600"><span id="batchLimit">300</span></p>
+                                </div>
+                            </div>
+                            <div id="batchTip" class="px-4 py-2.5 text-xs text-slate-600 bg-white border-t border-slate-200">
+                                <i class="fa-solid fa-circle-info text-brand-500 mr-1"></i>
+                                当前批次处于安全范围，可直接开始转换。
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 保存方式（移入左列 · 置于文件上传下方，填充空白） -->
+                <section id="saveSection" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-1 flex flex-col">
+                    <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                        <h3 class="font-semibold text-slate-800 flex items-center gap-2 text-sm">
+                            <i class="fa-solid fa-folder-tree text-brand-500"></i>
+                            保存方式
+                        </h3>
+                        <div id="dirInfo" class="hidden px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">
+                            <i class="fa-solid fa-circle-check mr-1"></i>
+                            已选择目录：<span id="dirName" class="font-semibold"></span>
+                        </div>
+                    </div>
+
+                    <div class="p-5 flex-1 flex flex-col">
+                        <!-- 三种保存方式：统一横向胸卡，高度一致 -->
+                        <div class="grid grid-cols-1 gap-3">
+                            <!-- 保存到指定文件夹 -->
+                            <label data-save-card="directory" id="saveDirCard"
+                                class="save-card relative flex items-center gap-3 pl-4 pr-3 py-3 rounded-xl border-2 border-brand-500 bg-brand-50/50 cursor-pointer hover:shadow-sm transition min-h-[68px]">
+                                <span class="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-brand-500"></span>
+                                <input type="radio" name="saveMode" value="directory" checked class="accent-brand-600 flex-shrink-0" />
+                                <div class="w-9 h-9 rounded-lg bg-brand-100 text-brand-600 flex items-center justify-center flex-shrink-0">
+                                    <i class="fa-solid fa-folder-open"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-semibold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                                        保存到指定文件夹
+                                        <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-brand-100 text-brand-600 font-medium">推荐</span>
+                                    </p>
+                                    <p class="text-xs text-slate-500 mt-0.5 leading-snug truncate">转换完成后直接写入你选择的本地目录（需 Chrome/Edge）</p>
+                                </div>
+                                <button id="pickDirBtn" type="button"
+                                    class="flex-shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-brand-50 hover:border-brand-300 text-xs text-slate-700 font-medium transition">
+                                    <i class="fa-solid fa-folder-plus mr-1"></i>选择目录
+                                </button>
+                            </label>
+
+                            <!-- 打包为 ZIP 下载 -->
+                            <label data-save-card="zip"
+                                class="save-card relative flex items-center gap-3 pl-4 pr-3 py-3 rounded-xl border-2 border-slate-200 hover:border-slate-300 cursor-pointer hover:shadow-sm transition min-h-[68px]">
+                                <span class="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-transparent"></span>
+                                <input type="radio" name="saveMode" value="zip" class="accent-brand-600 flex-shrink-0" />
+                                <div class="w-9 h-9 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center flex-shrink-0">
+                                    <i class="fa-solid fa-file-zipper"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-semibold text-slate-800">打包为 ZIP 下载</p>
+                                    <p class="text-xs text-slate-500 mt-0.5 leading-snug truncate">所有浏览器兼容 · 转换完成后下载压缩包</p>
+                                </div>
+                                <!-- ZIP 分卷设置（紧凑下拉） -->
+                                <div id="zipSplitWrap" class="flex-shrink-0 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-scissors text-amber-500 text-xs" title="单包上限"></i>
+                                    <select id="zipSplitSize"
+                                        class="px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer"
+                                        title="单包大小上限">
+                                        <option value="209715200">200 MB</option>
+                                        <option value="524288000" selected>500 MB</option>
+                                        <option value="1073741824">1 GB</option>
+                                        <option value="2147483648">2 GB</option>
+                                        <option value="0">不分卷</option>
+                                    </select>
+                                </div>
+                            </label>
+
+                            <!-- 逐个下载 -->
+                            <label data-save-card="each"
+                                class="save-card relative flex items-center gap-3 pl-4 pr-3 py-3 rounded-xl border-2 border-slate-200 hover:border-slate-300 cursor-pointer hover:shadow-sm transition min-h-[68px]">
+                                <span class="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-transparent"></span>
+                                <input type="radio" name="saveMode" value="each" class="accent-brand-600 flex-shrink-0" />
+                                <div class="w-9 h-9 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center flex-shrink-0">
+                                    <i class="fa-solid fa-download"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-semibold text-slate-800">逐个下载到默认位置</p>
+                                    <p class="text-xs text-slate-500 mt-0.5 leading-snug truncate">依次触发浏览器下载到默认下载目录</p>
+                                </div>
+                                <span class="flex-shrink-0 text-[11px] text-slate-400 hidden sm:inline-flex items-center gap-1">
+                                    <i class="fa-regular fa-circle-down"></i>默认目录
+                                </span>
+                            </label>
+                        </div>
+
+                        <!-- 分割线 -->
+                        <div class="mt-auto mb-5 pt-5 flex items-center gap-3 text-[11px] text-slate-400 uppercase tracking-wider">
+                            <span class="flex-1 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></span>
+                            <span><i class="fa-solid fa-rocket mr-1 text-brand-400"></i>Ready</span>
+                            <span class="flex-1 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></span>
+                        </div>
+
+                        <!-- 开始转换按钮（核心 · 全宽加大突出） -->
+                        <div>
+                            <button id="convertBtn" disabled
+                                class="w-full py-5 md:py-6 rounded-2xl bg-gradient-to-r from-brand-600 via-indigo-600 to-pink-500 text-white text-lg md:text-xl font-bold tracking-wide shadow-xl shadow-brand-500/40 hover:shadow-2xl hover:shadow-brand-500/50 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-md">
+                                <i class="fa-solid fa-play mr-2.5"></i>
+                                开始转换
+                            </button>
+
+                            <!-- 整体进度 -->
+                            <div id="overallProgressWrap" class="hidden mt-4 bg-slate-50 rounded-2xl border border-slate-100 p-4">
+                                <div class="flex items-center justify-between mb-2 text-sm">
+                                    <span class="font-medium text-slate-700">
+                                        <i class="fa-solid fa-bolt text-brand-500 mr-1"></i>整体进度
+                                    </span>
+                                    <span id="overallProgressText" class="text-brand-600 font-semibold">0 / 0</span>
+                                </div>
+                                <div class="h-2.5 bg-white rounded-full overflow-hidden border border-slate-100">
+                                    <div id="overallProgressBar" class="h-full bg-gradient-to-r from-brand-500 to-indigo-500 rounded-full transition-all duration-300" style="width:0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- 右侧：参数设置 -->
+            <aside class="flex flex-col gap-6">
+                <section id="settings" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex-1 flex flex-col">
+                    <div id="paramsHeader" class="px-5 py-3 border-b border-slate-100 flex items-center justify-between cursor-pointer lg:cursor-default select-none">
+                        <h3 class="font-semibold text-slate-800 flex items-center gap-2 text-sm">
+                            <i class="fa-solid fa-sliders text-brand-500"></i>
+                            转换参数
+                            <i id="paramsChevron" class="fa-solid fa-chevron-down text-slate-400 text-xs lg:hidden transition-transform"></i>
+                        </h3>
+                        <!-- 参数总开关 -->
+                        <label class="inline-flex items-center gap-2 cursor-pointer select-none" title="关闭则按原尺寸/高质量直出">
+                            <span id="paramToggleText" class="text-xs text-slate-500">已关闭</span>
+                            <span class="relative">
+                                <input id="paramToggle" type="checkbox" class="sr-only peer" />
+                                <span class="block w-10 h-6 rounded-full bg-slate-200 peer-checked:bg-brand-500 transition"></span>
+                                <span class="absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition peer-checked:translate-x-4"></span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <!-- 可折叠主体（手机端默认折叠） -->
+                    <div id="paramsCollapse" class="hidden lg:block">
+                    <!-- 输出格式选择（独立，不受参数开关控制） -->
+                    <div class="px-5 pt-4 pb-1">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                                <i class="fa-solid fa-file-image text-brand-500"></i>
+                                输出格式
+                            </label>
+                            <span id="formatHint" class="text-[11px] text-slate-400">有损压缩 · 体积更小</span>
+                        </div>
+                        <div id="formatSwitch" class="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                            <label class="cursor-pointer">
+                                <input type="radio" name="outputFormat" value="jpg" checked class="sr-only peer" />
+                                <div class="text-center py-2 rounded-lg text-sm font-medium text-slate-600 peer-checked:bg-white peer-checked:text-brand-600 peer-checked:shadow-sm peer-checked:ring-1 peer-checked:ring-brand-200 transition">
+                                    <i class="fa-solid fa-image mr-1"></i>JPG
+                                </div>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="outputFormat" value="png" class="sr-only peer" />
+                                <div class="text-center py-2 rounded-lg text-sm font-medium text-slate-600 peer-checked:bg-white peer-checked:text-brand-600 peer-checked:shadow-sm peer-checked:ring-1 peer-checked:ring-brand-200 transition">
+                                    <i class="fa-regular fa-image mr-1"></i>PNG
+                                </div>
+                            </label>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1.5">
+                            <i class="fa-solid fa-circle-info mr-1"></i>
+                            <span id="formatDesc">JPG：体积小、适合照片类素材；不支持透明（透明区将按背景色填充）</span>
+                        </p>
+                    </div>
+
+                    <div id="paramBody" class="p-5 space-y-4 relative">
+                        <!-- 关闭时的遮罩层 -->
+                        <div id="paramMask" class="absolute inset-0 bg-white/70 backdrop-blur-[1px] z-10 rounded-b-2xl flex items-center justify-center pointer-events-auto">
+                            <div class="text-center px-4">
+                                <i class="fa-solid fa-lock text-slate-300 text-2xl mb-2"></i>
+                                <p class="text-xs text-slate-500">参数已关闭，将按 <span class="text-brand-600 font-medium">PSD 原尺寸 · 高质量</span> 直接输出</p>
+                                <p class="text-[11px] text-slate-400 mt-1">开启上方开关以自定义转换参数</p>
+                            </div>
+                        </div>
+
+                        <!-- JPG 质量 -->
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="text-sm font-medium text-slate-700">JPG 质量</label>
+                                <span id="qualityValue" class="text-xs px-2 py-0.5 rounded bg-brand-100 text-brand-700">0.92</span>
+                            </div>
+                            <input id="qualityRange" type="range" min="0.3" max="1" step="0.01" value="0.92"
+                                class="w-full accent-brand-600" />
+                            <div class="flex justify-between text-[10px] text-slate-400 mt-1">
+                                <span>体积小</span>
+                                <span>质量高</span>
+                            </div>
+                        </div>
+
+                        <!-- 最大尺寸 -->
+                        <div>
+                            <label class="text-sm font-medium text-slate-700 block mb-2">最大边长（像素）</label>
+                            <select id="maxSize" class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                                <option value="0">保持原始尺寸</option>
+                                <option value="800">800 px</option>
+                                <option value="1280">1280 px</option>
+                                <option value="1920" selected>1920 px</option>
+                                <option value="2560">2560 px</option>
+                                <option value="4096">4096 px</option>
+                            </select>
+                            <p class="text-xs text-slate-400 mt-1.5">超过此尺寸将等比缩放</p>
+                        </div>
+
+                        <!-- 背景色 -->
+                        <div>
+                            <label class="text-sm font-medium text-slate-700 block mb-2">透明区域填充</label>
+                            <div class="flex items-center gap-2">
+                                <input id="bgColor" type="color" value="#ffffff"
+                                    class="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer" />
+                                <input id="bgColorText" type="text" value="#ffffff"
+                                    class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                            </div>
+                        </div>
+
+                        <!-- 文件名前缀 -->
+                        <div>
+                            <label class="text-sm font-medium text-slate-700 block mb-2">文件名前缀（可选）</label>
+                            <input id="prefix" type="text" placeholder="例如：converted_"
+                                class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                        </div>
+
+                    </div>
+                    </div><!-- /paramsCollapse -->
+                </section>
+            </aside>
+        </div>
+
+        <!-- 转换任务列表（全宽 · 置于最下方） -->
+        <section id="list" class="mt-6 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="font-semibold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-brand-500"></i>
+                    转换任务
+                </h3>
+                <div class="flex items-center gap-2">
+                    <button id="clearBtn" class="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                        <i class="fa-solid fa-trash-can mr-1"></i>清空
+                    </button>
+                </div>
+            </div>
+
+            <div id="taskList" class="divide-y divide-slate-100 max-h-[560px] overflow-y-auto">
+                <div id="emptyTip" class="py-16 text-center text-slate-400">
+                    <i class="fa-regular fa-folder-open text-4xl mb-3"></i>
+                    <p class="text-sm">暂无任务，请先上传图片文件</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 页脚签名 -->
+        <footer class="mt-12 text-center text-sm text-slate-500">
+            <p>由 <a href="https://with.woa.com/" style="color: #8A2BE2;" target="_blank">With</a> 通过自然语言生成</p>
+        </footer>
+    </main>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed top-6 right-6 z-50 hidden px-5 py-3 rounded-xl shadow-lg text-sm font-medium text-white transition-all"></div>
+
+    <script>
+/* === 内联主逻辑（原 main.js） === */
+/**
+ * PSD 批量转换 JPG/PNG —— 主逻辑
+ */
+
+// ============== 状态管理 ==============
+const state = {
+    tasks: [],
+    directoryHandle: null,
+    converting: false
+};
+
+// ============== DOM 引用 ==============
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+const fileInput        = $('#fileInput');
+const dropZone         = $('#dropZone');
+const fileCountBadge   = $('#fileCountBadge');
+const taskListEl       = $('#taskList');
+const emptyTip         = $('#emptyTip');
+const clearBtn         = $('#clearBtn');
+
+const qualityRange     = $('#qualityRange');
+const qualityValue     = $('#qualityValue');
+const maxSizeSel       = $('#maxSize');
+const bgColorInput     = $('#bgColor');
+const bgColorText      = $('#bgColorText');
+const prefixInput      = $('#prefix');
+
+const pickDirBtn       = $('#pickDirBtn');
+const dirInfo          = $('#dirInfo');
+const dirNameEl        = $('#dirName');
+
+const convertBtn       = $('#convertBtn');
+const overallProgressWrap = $('#overallProgressWrap');
+const overallProgressBar  = $('#overallProgressBar');
+const overallProgressText = $('#overallProgressText');
+
+const toastEl = $('#toast');
+
+const batchStatsEl   = $('#batchStats');
+const batchCountEl   = $('#batchCount');
+const batchTotalEl   = $('#batchTotalSize');
+const batchMaxEl     = $('#batchMaxSize');
+const batchLimitEl   = $('#batchLimit');
+const batchLevelEl   = $('#batchLevelBadge');
+const batchTipEl     = $('#batchTip');
+
+const paramToggle     = $('#paramToggle');
+const paramToggleText = $('#paramToggleText');
+const paramMask       = $('#paramMask');
+
+const zipSplitSizeSel = $('#zipSplitSize');
+const zipSplitWrap    = $('#zipSplitWrap');
+
+const formatRadios    = document.querySelectorAll('input[name="outputFormat"]');
+const formatHintEl    = $('#formatHint');
+const formatDescEl    = $('#formatDesc');
+
+const DEFAULT_PARAMS = {
+    quality: 0.95,
+    maxSize: 0,
+    bgColor: '#ffffff',
+    prefix:  ''
+};
+
+function getEffectiveParams() {
+    if (paramToggle && paramToggle.checked) {
+        return {
+            quality: parseFloat(qualityRange.value) || 0.92,
+            maxSize: parseInt(maxSizeSel.value, 10) || 0,
+            bgColor: bgColorInput.value || '#ffffff',
+            prefix:  (prefixInput.value || '').trim()
+        };
+    }
+    return { ...DEFAULT_PARAMS };
+}
+
+const BATCH_LIMITS = {
+    directory: { maxCount: 500, maxTotal: 4  * 1024 * 1024 * 1024, singleWarn: 500 * 1024 * 1024 },
+    zip:       { maxCount: 100, maxTotal: 2  * 1024 * 1024 * 1024, singleWarn: 300 * 1024 * 1024 },
+    each:      { maxCount: 200, maxTotal: 3  * 1024 * 1024 * 1024, singleWarn: 400 * 1024 * 1024 }
+};
+const HARD_MAX_COUNT = 2000;
+
+function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+let toastTimer = null;
+function toast(msg, type = 'info') {
+    clearTimeout(toastTimer);
+    toastEl.textContent = msg;
+    toastEl.className = `fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium text-white transition-all toast-${type}`;
+    toastEl.style.opacity = '0';
+    toastEl.style.transform = 'translateY(-10px)';
+    toastEl.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        toastEl.style.opacity = '1';
+        toastEl.style.transform = 'translateY(0)';
+    });
+    toastTimer = setTimeout(() => {
+        toastEl.style.opacity = '0';
+        toastEl.style.transform = 'translateY(-10px)';
+        setTimeout(() => toastEl.classList.add('hidden'), 300);
+    }, 2800);
+}
+
+function getSaveMode() {
+    const checked = document.querySelector('input[name="saveMode"]:checked');
+    return checked ? checked.value : 'zip';
+}
+
+function getOutputFormat() {
+    const checked = document.querySelector('input[name="outputFormat"]:checked');
+    return checked ? checked.value : 'jpg';
+}
+
+function buildOutputName(srcName) {
+    const { prefix } = getEffectiveParams();
+    const base = srcName.replace(/\.(psd|png|jpe?g|webp|gif|bmp|tiff?|ico)$/i, '');
+    const ext  = getOutputFormat() === 'png' ? 'png' : 'jpg';
+    return `${prefix}${base}.${ext}`;
+}
+
+function evaluateBatch() {
+    const mode = getSaveMode();
+    const limit = BATCH_LIMITS[mode] || BATCH_LIMITS.zip;
+    const count = state.tasks.length;
+    let totalSize = 0;
+    let maxSize = 0;
+    state.tasks.forEach(t => {
+        totalSize += t.file.size;
+        if (t.file.size > maxSize) maxSize = t.file.size;
+    });
+
+    let level = 'safe';
+    const reasons = [];
+
+    if (count > HARD_MAX_COUNT) {
+        level = 'danger';
+        reasons.push(`文件数 ${count} 超过硬上限 ${HARD_MAX_COUNT}，浏览器极可能崩溃，强烈建议分批处理`);
+    } else if (count > limit.maxCount) {
+        level = 'danger';
+        reasons.push(`文件数 ${count} 超过当前模式建议上限 ${limit.maxCount}，建议拆成多批`);
+    } else if (count > limit.maxCount * 0.75) {
+        level = level === 'danger' ? 'danger' : 'warn';
+        reasons.push(`文件数接近建议上限（${limit.maxCount}）`);
+    }
+
+    if (totalSize > limit.maxTotal) {
+        level = 'danger';
+        reasons.push(`总大小 ${formatSize(totalSize)} 超过 ${formatSize(limit.maxTotal)}，内存压力过大`);
+    } else if (totalSize > limit.maxTotal * 0.75) {
+        level = level === 'danger' ? 'danger' : 'warn';
+        reasons.push(`总大小接近建议上限（${formatSize(limit.maxTotal)}）`);
+    }
+
+    if (maxSize > limit.singleWarn) {
+        level = level === 'danger' ? 'danger' : 'warn';
+        reasons.push(`存在单个文件 ${formatSize(maxSize)}，超过 ${formatSize(limit.singleWarn)}，转换较慢且易 OOM`);
+    }
+
+    let tip;
+    if (level === 'safe') {
+        tip = `当前批次处于安全范围，可直接开始转换。`;
+    } else {
+        tip = reasons.join('；') + '。';
+    }
+
+    return { level, count, totalSize, maxSize, limit: limit.maxCount, tip, mode };
+}
+
+function updateBatchStats() {
+    if (!batchStatsEl) return;
+    if (state.tasks.length === 0) {
+        batchStatsEl.classList.add('hidden');
+        return;
+    }
+    const r = evaluateBatch();
+    batchStatsEl.classList.remove('hidden');
+    batchCountEl.textContent = r.count;
+    batchTotalEl.textContent = formatSize(r.totalSize);
+    batchMaxEl.textContent   = r.maxSize ? formatSize(r.maxSize) : '—';
+    batchLimitEl.textContent = r.limit;
+
+    const badgeMap = {
+        safe:   { cls: 'bg-emerald-100 text-emerald-700', icon: 'fa-circle-check',        text: '安全' },
+        warn:   { cls: 'bg-amber-100   text-amber-700',   icon: 'fa-triangle-exclamation', text: '偏大' },
+        danger: { cls: 'bg-rose-100    text-rose-700',    icon: 'fa-circle-exclamation',   text: '超限' }
+    };
+    const b = badgeMap[r.level];
+    batchLevelEl.className = `text-xs px-2.5 py-1 rounded-full font-medium ${b.cls}`;
+    batchLevelEl.innerHTML = `<i class="fa-solid ${b.icon} mr-1"></i>${b.text}`;
+
+    const tipColor = r.level === 'safe' ? 'text-slate-600'
+                   : r.level === 'warn' ? 'text-amber-700'
+                   : 'text-rose-700';
+    const tipIcon  = r.level === 'safe' ? 'fa-circle-info text-brand-500'
+                   : r.level === 'warn' ? 'fa-triangle-exclamation text-amber-500'
+                   : 'fa-circle-exclamation text-rose-500';
+    batchTipEl.className = `px-4 py-2.5 text-xs bg-white border-t border-slate-200 ${tipColor}`;
+    batchTipEl.innerHTML = `<i class="fa-solid ${tipIcon} mr-1"></i>${r.tip}`;
+}
+
+function updateFileCount() {
+    if (fileCountBadge) fileCountBadge.textContent = `${state.tasks.length} 个文件`;
+    if (clearBtn)      clearBtn.disabled   = state.tasks.length === 0;
+    if (convertBtn)    convertBtn.disabled = state.tasks.length === 0 || state.converting;
+    if (emptyTip)      emptyTip.style.display = state.tasks.length === 0 ? '' : 'none';
+    updateBatchStats();
+}
+
+function statusLabel(status) {
+    switch (status) {
+        case 'pending':    return { text: '等待中',   cls: 'status-pending',    icon: 'fa-regular fa-clock' };
+        case 'processing': return { text: '转换中',   cls: 'status-processing', icon: 'fa-solid fa-spinner spin' };
+        case 'success':    return { text: '已完成',   cls: 'status-success',    icon: 'fa-solid fa-circle-check' };
+        case 'error':      return { text: '失败',     cls: 'status-error',      icon: 'fa-solid fa-circle-exclamation' };
+        case 'saved':      return { text: '已保存',   cls: 'status-success',    icon: 'fa-solid fa-floppy-disk' };
+        default:           return { text: status,     cls: 'status-pending',    icon: 'fa-solid fa-circle' };
+    }
+}
+
+function renderTask(task) {
+    const existed = document.getElementById(`task-${task.id}`);
+    const { text, cls, icon } = statusLabel(task.status);
+
+    const html = `
+        <div id="task-${task.id}" class="task-item px-6 py-4 flex items-center gap-4 hover:bg-slate-50 transition">
+            <div class="task-thumb">
+                ${task.thumbUrl
+                    ? `<img src="${task.thumbUrl}" alt="thumb" />`
+                    : `<i class="fa-regular fa-image text-brand-400 text-xl"></i>`}
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                    <p class="text-sm font-medium text-slate-800 truncate" title="${task.name}">${task.name}</p>
+                </div>
+                <div class="mt-1 flex items-center gap-3 text-xs text-slate-500">
+                    <span><i class="fa-regular fa-file mr-1"></i>${formatSize(task.file.size)}</span>
+                    ${task.width ? `<span><i class="fa-solid fa-maximize mr-1"></i>${task.width}×${task.height}</span>` : ''}
+                    ${task.outSize ? `<span class="text-emerald-600"><i class="fa-solid fa-arrow-right-long mr-1"></i>${formatSize(task.outSize)}</span>` : ''}
+                </div>
+                ${(task.status === 'processing' || (task.progress > 0 && task.status !== 'success' && task.status !== 'saved'))
+                    ? `<div class="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div class="progress-bar h-full bg-gradient-to-r from-brand-500 to-indigo-500 rounded-full" style="width:${task.progress || 0}%"></div>
+                       </div>`
+                    : ''}
+                ${task.error ? `<p class="mt-1.5 text-xs text-rose-600"><i class="fa-solid fa-circle-exclamation mr-1"></i>${task.error}</p>` : ''}
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <span class="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full ${cls}">
+                    <i class="${icon}"></i>${text}
+                </span>
+                ${(task.status === 'success' || task.status === 'saved') && task.jpgBlob
+                    ? `<button data-action="download" data-id="${task.id}" class="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 hover:bg-brand-100 transition" title="下载">
+                          <i class="fa-solid fa-download"></i>
+                       </button>`
+                    : ((task.status === 'saved' && !task.jpgBlob)
+                        ? `<span class="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-600" title="已释放内存，如需再次下载请重新转换">
+                              <i class="fa-solid fa-hard-drive"></i>已落盘
+                           </span>`
+                        : '')}
+                <button data-action="remove" data-id="${task.id}" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-rose-100 hover:text-rose-600 transition" title="移除">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+    `;
+
+    if (existed) {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = html.trim();
+        existed.replaceWith(wrap.firstChild);
+    } else {
+        taskListEl.insertAdjacentHTML('beforeend', html);
+    }
+}
+
+function renderAll() {
+    [...taskListEl.children].forEach(ch => {
+        if (ch.id !== 'emptyTip') ch.remove();
+    });
+    state.tasks.forEach(renderTask);
+    updateFileCount();
+}
+
+const SUPPORTED_EXT_RE = /\.(psd|png|jpe?g|webp|gif|bmp|tiff?|ico)$/i;
+
+function detectInputKind(file) {
+    const name = (file.name || '').toLowerCase();
+    if (/\.psd$/i.test(name))        return 'psd';
+    if (/\.(tiff?)$/i.test(name))    return 'tiff';
+    if (/\.ico$/i.test(name))        return 'ico';
+    if (/\.(png|jpe?g|webp|gif|bmp)$/i.test(name)) return 'image';
+    if (file.type && file.type.startsWith('image/')) return 'image';
+    return 'unknown';
+}
+
+function addFiles(files) {
+    const allFiles = [...files];
+    const validFiles = allFiles.filter(f => SUPPORTED_EXT_RE.test(f.name));
+    const rejected = allFiles.length - validFiles.length;
+    if (rejected > 0) {
+        toast(`已忽略 ${rejected} 个不支持的文件`, 'warn');
+    }
+    if (validFiles.length === 0) {
+        if (rejected === 0) toast('请选择 PSD / PNG / JPG / WEBP / GIF / BMP / TIFF / ICO 格式的文件', 'warn');
+        return;
+    }
+
+    const remaining = HARD_MAX_COUNT - state.tasks.length;
+    let accepted = validFiles;
+    let truncated = 0;
+    if (remaining <= 0) {
+        toast(`任务队列已达硬上限 ${HARD_MAX_COUNT} 个，请先清理或完成当前任务`, 'error');
+        return;
+    }
+    if (validFiles.length > remaining) {
+        accepted = validFiles.slice(0, remaining);
+        truncated = validFiles.length - remaining;
+    }
+
+    accepted.forEach(file => {
+        state.tasks.push({
+            id: uid(),
+            file,
+            name: file.name,
+            kind: detectInputKind(file),
+            status: 'pending',
+            progress: 0,
+            error: '',
+            thumbUrl: '',
+            jpgBlob: null,
+            outName: buildOutputName(file.name)
+        });
+    });
+    renderAll();
+
+    if (truncated > 0) {
+        toast(`已添加 ${accepted.length} 个文件，${truncated} 个因超出队列上限被忽略`, 'warn');
+    } else {
+        toast(`已添加 ${accepted.length} 个文件`, 'success');
+    }
+}
+
+// ============== PSD / 图片解码 ==============
+
+const LARGE_FILE_THRESHOLD = 300 * 1024 * 1024;
+const HUGE_FILE_THRESHOLD  = 800 * 1024 * 1024;
+const ARRAY_BUFFER_SAFE_MAX = 2040 * 1024 * 1024;
+const SAFE_CANVAS_MAX_DIM = 8192;
+const LARGE_FILE_CANVAS_MAX_DIM = 4096;
+
+function yieldToBrowser(ms = 0) {
+    return new Promise(r => setTimeout(r, ms));
+}
+
+async function decodeImageFileToCanvas(file) {
+    if (typeof createImageBitmap === 'function') {
+        try {
+            const bitmap = await createImageBitmap(file);
+            const canvas = document.createElement('canvas');
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(bitmap, 0, 0);
+            if (typeof bitmap.close === 'function') bitmap.close();
+            return canvas;
+        } catch (err) {
+            console.warn('[decode] createImageBitmap 失败，退回 <img>：', err);
+        }
+    }
+    return await new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth || img.width;
+                canvas.height = img.naturalHeight || img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas);
+            } catch (err) {
+                reject(err);
+            } finally {
+                URL.revokeObjectURL(url);
+            }
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('图片解码失败（格式可能不受浏览器支持）'));
+        };
+        img.src = url;
+    });
+}
+
+async function decodeTiffFileToCanvas(file) {
+    if (typeof UTIF === 'undefined') {
+        throw new Error('TIFF 解析库未加载，请检查网络');
+    }
+    const buffer = await file.arrayBuffer();
+    const ifds = UTIF.decode(buffer);
+    if (!ifds || ifds.length === 0) {
+        throw new Error('TIFF 文件无有效图像页');
+    }
+    const page = ifds[0];
+    UTIF.decodeImage(buffer, page, ifds);
+    const rgba = UTIF.toRGBA8(page);
+    const w = page.width;
+    const h = page.height;
+    if (!w || !h) throw new Error('TIFF 页面尺寸无效');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.createImageData(w, h);
+    imgData.data.set(rgba);
+    ctx.putImageData(imgData, 0, 0);
+    return canvas;
+}
+
+async function decodeIcoFileToCanvas(file) {
+    const buffer = await file.arrayBuffer();
+    const dv = new DataView(buffer);
+    const reserved = dv.getUint16(0, true);
+    const type = dv.getUint16(2, true);
+    const count = dv.getUint16(4, true);
+    if (reserved !== 0 || (type !== 1 && type !== 2) || count === 0) {
+        throw new Error('ICO 文件格式无效');
+    }
+
+    let best = null;
+    for (let i = 0; i < count; i++) {
+        const off = 6 + i * 16;
+        let w = dv.getUint8(off);
+        let h = dv.getUint8(off + 1);
+        if (w === 0) w = 256;
+        if (h === 0) h = 256;
+        const bitCount = dv.getUint16(off + 6, true);
+        const size     = dv.getUint32(off + 8, true);
+        const offset   = dv.getUint32(off + 12, true);
+        const entry = { w, h, bitCount, size, offset };
+        if (!best || w > best.w || (w === best.w && bitCount > best.bitCount)) {
+            best = entry;
+        }
+    }
+    if (!best) throw new Error('ICO 无可用帧');
+
+    const frameBytes = new Uint8Array(buffer, best.offset, best.size);
+    const isPng = frameBytes.length >= 8 &&
+                  frameBytes[0] === 0x89 && frameBytes[1] === 0x50 &&
+                  frameBytes[2] === 0x4E && frameBytes[3] === 0x47;
+
+    if (isPng) {
+        const blob = new Blob([frameBytes], { type: 'image/png' });
+        const url = URL.createObjectURL(blob);
+        try {
+            const canvas = await new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    const c = document.createElement('canvas');
+                    c.width = img.naturalWidth || best.w;
+                    c.height = img.naturalHeight || best.h;
+                    c.getContext('2d').drawImage(img, 0, 0);
+                    resolve(c);
+                };
+                img.onerror = () => reject(new Error('ICO 内嵌 PNG 解码失败'));
+                img.src = url;
+            });
+            return canvas;
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    const frameDv = new DataView(frameBytes.buffer, frameBytes.byteOffset, frameBytes.byteLength);
+    const headerSize = frameDv.getUint32(0, true);
+    const bmpW = frameDv.getInt32(4, true);
+    const bmpHx2 = frameDv.getInt32(8, true);
+    const bmpH = Math.abs(bmpHx2) / 2;
+    const bpp = frameDv.getUint16(14, true);
+
+    if (headerSize !== 40 && headerSize !== 108 && headerSize !== 124) {
+        throw new Error(`ICO 内部 BMP 头不支持（size=${headerSize}）`);
+    }
+    if (bpp !== 32 && bpp !== 24 && bpp !== 8 && bpp !== 4 && bpp !== 1) {
+        throw new Error(`ICO 内部 BMP 位深不支持：${bpp}`);
+    }
+
+    if (bpp === 32 || bpp === 24) {
+        const rowSize = Math.floor((bpp * bmpW + 31) / 32) * 4;
+        const pixelDataSize = rowSize * bmpH;
+        const fileSize = 14 + headerSize + pixelDataSize;
+
+        const out = new Uint8Array(fileSize);
+        out[0] = 0x42; out[1] = 0x4D;
+        new DataView(out.buffer).setUint32(2, fileSize, true);
+        new DataView(out.buffer).setUint32(10, 14 + headerSize, true);
+        out.set(new Uint8Array(frameBytes.buffer, frameBytes.byteOffset, headerSize), 14);
+        new DataView(out.buffer).setInt32(14 + 8, bmpH, true);
+        const pixelsStart = frameBytes.byteOffset + headerSize;
+        out.set(new Uint8Array(frameBytes.buffer, pixelsStart, pixelDataSize), 14 + headerSize);
+
+        const blob = new Blob([out], { type: 'image/bmp' });
+        const url = URL.createObjectURL(blob);
+        try {
+            return await new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    const c = document.createElement('canvas');
+                    c.width = img.naturalWidth || bmpW;
+                    c.height = img.naturalHeight || bmpH;
+                    c.getContext('2d').drawImage(img, 0, 0);
+                    resolve(c);
+                };
+                img.onerror = () => reject(new Error('ICO 内嵌 BMP 解码失败'));
+                img.src = url;
+            });
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    throw new Error(`ICO 位深 ${bpp} 暂未支持，请用其他工具转换`);
+}
+
+async function decodePsdFileToCanvas(file, onProgress, isLarge) {
+    if (file.size > ARRAY_BUFFER_SAFE_MAX) {
+        throw new Error(
+            `文件过大（${formatSize(file.size)}），超过浏览器 ArrayBuffer 安全上限 ${formatSize(ARRAY_BUFFER_SAFE_MAX)}。`
+        );
+    }
+
+    onProgress(5);
+    let arrayBuffer;
+    try {
+        arrayBuffer = await file.arrayBuffer();
+    } catch (err) {
+        throw new Error(`文件读取失败（${formatSize(file.size)}）：${err.message || err}`);
+    }
+    onProgress(18);
+
+    if (isLarge) await yieldToBrowser(30);
+
+    if (typeof agPsd === 'undefined' || typeof agPsd.readPsd !== 'function') {
+        throw new Error('PSD 解析库未加载，请检查网络');
+    }
+
+    let psd;
+    try {
+        psd = agPsd.readPsd(arrayBuffer, {
+            skipLayerImageData: true,
+            skipThumbnail: true,
+            skipCompositeImageData: false
+        });
+    } catch (err) {
+        arrayBuffer = null;
+        throw new Error('PSD 解析失败：' + (err.message || err));
+    }
+    arrayBuffer = null;
+    onProgress(55);
+
+    if (isLarge) await yieldToBrowser(20);
+
+    let srcCanvas = psd.canvas;
+    if (!srcCanvas) {
+        if (psd.imageData) {
+            srcCanvas = document.createElement('canvas');
+            srcCanvas.width = psd.width;
+            srcCanvas.height = psd.height;
+            srcCanvas.getContext('2d').putImageData(psd.imageData, 0, 0);
+        } else {
+            psd = null;
+            throw new Error('无法获取 PSD 合成图像');
+        }
+    }
+    psd = null;
+    return srcCanvas;
+}
+
+async function convertFileToImage(file, onProgress) {
+    onProgress(2);
+
+    const isLarge = file.size >= LARGE_FILE_THRESHOLD;
+    const isHuge  = file.size >= HUGE_FILE_THRESHOLD;
+    const kind = detectInputKind(file);
+
+    onProgress(5);
+
+    let srcCanvas;
+    try {
+        if (kind === 'psd') {
+            srcCanvas = await decodePsdFileToCanvas(file, onProgress, isLarge);
+        } else if (kind === 'tiff') {
+            srcCanvas = await decodeTiffFileToCanvas(file);
+            onProgress(55);
+        } else if (kind === 'ico') {
+            srcCanvas = await decodeIcoFileToCanvas(file);
+            onProgress(55);
+        } else if (kind === 'image') {
+            srcCanvas = await decodeImageFileToCanvas(file);
+            onProgress(55);
+        } else {
+            throw new Error(`暂不支持的文件类型：${file.name}`);
+        }
+    } catch (err) {
+        throw new Error(err.message || String(err));
+    }
+
+    if (!srcCanvas) throw new Error('解码失败：未得到图像数据');
+
+    const srcW = srcCanvas.width;
+    const srcH = srcCanvas.height;
+    if (srcW === 0 || srcH === 0) {
+        srcCanvas = null;
+        throw new Error('图像尺寸异常（0×0）');
+    }
+
+    onProgress(72);
+
+    const eff = getEffectiveParams();
+    let maxSize = eff.maxSize;
+    const quality = eff.quality;
+    const bg = eff.bgColor;
+    const format = getOutputFormat();
+    const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+
+    const autoCap = isHuge ? LARGE_FILE_CANVAS_MAX_DIM
+                  : isLarge ? SAFE_CANVAS_MAX_DIM
+                  : 0;
+    if (autoCap > 0) {
+        if (maxSize === 0 || maxSize > autoCap) {
+            maxSize = autoCap;
+        }
+    }
+    const HARD_CANVAS_MAX = SAFE_CANVAS_MAX_DIM;
+    const effectiveCap = maxSize > 0 ? Math.min(maxSize, HARD_CANVAS_MAX) : HARD_CANVAS_MAX;
+
+    let outW = srcW;
+    let outH = srcH;
+    if (Math.max(outW, outH) > effectiveCap) {
+        const ratio = effectiveCap / Math.max(outW, outH);
+        outW = Math.max(1, Math.round(outW * ratio));
+        outH = Math.max(1, Math.round(outH * ratio));
+    }
+
+    let outCanvas = document.createElement('canvas');
+    outCanvas.width = outW;
+    outCanvas.height = outH;
+    const outCtx = outCanvas.getContext('2d');
+
+    if (format === 'jpg') {
+        outCtx.fillStyle = bg;
+        outCtx.fillRect(0, 0, outW, outH);
+    } else {
+        outCtx.clearRect(0, 0, outW, outH);
+    }
+    try {
+        outCtx.drawImage(srcCanvas, 0, 0, outW, outH);
+    } catch (err) {
+        srcCanvas = null;
+        outCanvas = null;
+        throw new Error('绘制失败（可能内存不足）：' + (err.message || err));
+    }
+
+    onProgress(85);
+
+    if (isLarge && srcCanvas !== outCanvas) {
+        try { srcCanvas.width = 0; srcCanvas.height = 0; } catch (_) {}
+    }
+    srcCanvas = null;
+
+    if (isLarge) await yieldToBrowser(10);
+
+    const thumbCanvas = document.createElement('canvas');
+    const thumbMax = 120;
+    const tRatio = Math.min(1, thumbMax / Math.max(outW, outH));
+    thumbCanvas.width = Math.max(1, Math.round(outW * tRatio));
+    thumbCanvas.height = Math.max(1, Math.round(outH * tRatio));
+    const thumbCtx = thumbCanvas.getContext('2d');
+    if (format === 'jpg') {
+        thumbCtx.fillStyle = bg;
+        thumbCtx.fillRect(0, 0, thumbCanvas.width, thumbCanvas.height);
+    }
+    thumbCtx.drawImage(outCanvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+    const thumbUrl = thumbCanvas.toDataURL('image/jpeg', 0.7);
+
+    const blob = await new Promise((resolve, reject) => {
+        const onBlob = (b) => {
+            if (b) resolve(b);
+            else reject(new Error('Canvas 导出 Blob 失败'));
+        };
+        try {
+            if (format === 'png') outCanvas.toBlob(onBlob, mimeType);
+            else                  outCanvas.toBlob(onBlob, mimeType, quality);
+        } catch (err) { reject(err); }
+    });
+
+    try { outCanvas.width = 0; outCanvas.height = 0; } catch (_) {}
+    outCanvas = null;
+
+    onProgress(100);
+
+    return {
+        blob,
+        thumbUrl,
+        width: srcW,
+        height: srcH,
+        outWidth: outW,
+        outHeight: outH
+    };
+}
+
+// ============== 保存 ==============
+
+async function saveToDirectory(dirHandle, fileName, blob) {
+    const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+}
+
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ============== 事件绑定 ==============
+
+function on(el, type, handler, name) {
+    if (!el) {
+        console.warn(`[inline] 元素不存在，跳过事件绑定：${name || type}`);
+        return;
+    }
+    el.addEventListener(type, handler);
+}
+
+on(fileInput, 'change', (e) => {
+    if (e.target.files && e.target.files.length) {
+        addFiles(e.target.files);
+        fileInput.value = '';
+    }
+}, 'fileInput.change');
+
+['dragenter', 'dragover'].forEach(ev => {
+    on(dropZone, ev, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.add('dragover');
+    }, `dropZone.${ev}`);
+});
+['dragleave', 'drop'].forEach(ev => {
+    on(dropZone, ev, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.remove('dragover');
+    }, `dropZone.${ev}`);
+});
+on(dropZone, 'drop', (e) => {
+    const files = e.dataTransfer && e.dataTransfer.files;
+    if (files && files.length) addFiles(files);
+}, 'dropZone.drop');
+
+on(taskListEl, 'click', (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    const action = btn.dataset.action;
+    const task = state.tasks.find(t => t.id === id);
+    if (!task) return;
+
+    if (action === 'remove') {
+        state.tasks = state.tasks.filter(t => t.id !== id);
+        renderAll();
+    } else if (action === 'download' && task.jpgBlob) {
+        downloadBlob(task.jpgBlob, task.outName);
+    }
+}, 'taskList.click');
+
+on(clearBtn, 'click', () => {
+    if (state.converting) {
+        toast('转换进行中，无法清空', 'warn');
+        return;
+    }
+    state.tasks = [];
+    renderAll();
+}, 'clearBtn.click');
+
+on(qualityRange, 'input', () => {
+    qualityValue.textContent = parseFloat(qualityRange.value).toFixed(2);
+}, 'qualityRange.input');
+
+on(bgColorInput, 'input', () => {
+    bgColorText.value = bgColorInput.value;
+}, 'bgColor.input');
+on(bgColorText, 'input', () => {
+    const v = bgColorText.value.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+        bgColorInput.value = v;
+    }
+}, 'bgColorText.input');
+
+on(prefixInput, 'input', () => {
+    state.tasks.forEach(t => { t.outName = buildOutputName(t.name); });
+}, 'prefix.input');
+
+function refreshParamToggleUI() {
+    if (!paramToggle) return;
+    const on2 = paramToggle.checked;
+    if (paramToggleText) {
+        paramToggleText.textContent = on2 ? '已开启' : '已关闭';
+        paramToggleText.className = on2
+            ? 'text-xs text-brand-600 font-medium'
+            : 'text-xs text-slate-500';
+    }
+    if (paramMask) {
+        paramMask.style.display = on2 ? 'none' : 'flex';
+    }
+    const paramBody = document.getElementById('paramBody');
+    if (paramBody) {
+        paramBody.classList.toggle('opacity-50', !on2);
+    }
+    state.tasks.forEach(t => { t.outName = buildOutputName(t.name); });
+}
+
+on(paramToggle, 'change', () => {
+    refreshParamToggleUI();
+}, 'paramToggle.change');
+
+refreshParamToggleUI();
+
+function refreshFormatUI() {
+    const fmt = getOutputFormat();
+    if (formatHintEl) {
+        formatHintEl.textContent = fmt === 'png'
+            ? '无损 · 支持透明'
+            : '有损压缩 · 体积更小';
+    }
+    if (formatDescEl) {
+        formatDescEl.textContent = fmt === 'png'
+            ? 'PNG：无损压缩、保留透明通道；体积较大，适合图标、UI 切图等素材'
+            : 'JPG：体积小、适合照片类素材；不支持透明（透明区将按背景色填充）';
+    }
+    state.tasks.forEach(t => { t.outName = buildOutputName(t.name); });
+}
+
+formatRadios.forEach(r => {
+    on(r, 'change', refreshFormatUI, 'outputFormat.change');
+});
+refreshFormatUI();
+
+function getZipSplitBytes() {
+    if (!zipSplitSizeSel) return 0;
+    const v = parseInt(zipSplitSizeSel.value, 10);
+    return isNaN(v) ? 0 : v;
+}
+
+function splitIntoParts(items, limitBytes) {
+    if (!limitBytes || limitBytes <= 0 || items.length === 0) {
+        return [items.slice()];
+    }
+    const parts = [];
+    let current = [];
+    let currentSize = 0;
+    for (const it of items) {
+        const size = (it.jpgBlob && it.jpgBlob.size) || it.outSize || 0;
+        if (size > limitBytes) {
+            if (current.length) {
+                parts.push(current);
+                current = [];
+                currentSize = 0;
+            }
+            parts.push([it]);
+            continue;
+        }
+        if (currentSize + size > limitBytes && current.length > 0) {
+            parts.push(current);
+            current = [];
+            currentSize = 0;
+        }
+        current.push(it);
+        currentSize += size;
+    }
+    if (current.length) parts.push(current);
+    return parts;
+}
+
+function estimateZipParts() {
+    const limitBytes = getZipSplitBytes();
+    if (!limitBytes) return 1;
+    const estOutputBytes = state.tasks.reduce((s, t) => s + t.file.size, 0) * 0.35;
+    return Math.max(1, Math.ceil(estOutputBytes / limitBytes));
+}
+
+$$('input[name="saveMode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+        $$('input[name="saveMode"]').forEach(r => {
+            const label = r.closest('label');
+            const accent = label.querySelector('span.absolute');
+            if (r.checked) {
+                label.classList.remove('border-slate-200');
+                label.classList.add('border-brand-500', 'bg-brand-50/50');
+                if (accent) {
+                    accent.classList.remove('bg-transparent');
+                    accent.classList.add('bg-brand-500');
+                }
+            } else {
+                label.classList.add('border-slate-200');
+                label.classList.remove('border-brand-500', 'bg-brand-50/50');
+                if (accent) {
+                    accent.classList.add('bg-transparent');
+                    accent.classList.remove('bg-brand-500');
+                }
+            }
+        });
+        if (zipSplitWrap) {
+            zipSplitWrap.style.display = getSaveMode() === 'zip' ? 'inline-flex' : 'none';
+        }
+        updateBatchStats();
+    });
+});
+
+if (zipSplitWrap) {
+    zipSplitWrap.style.display = getSaveMode() === 'zip' ? 'inline-flex' : 'none';
+}
+
+pickDirBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.showDirectoryPicker) {
+        toast('当前浏览器不支持选择目录，请使用 Chrome 或 Edge', 'error');
+        return;
+    }
+    try {
+        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        state.directoryHandle = handle;
+        dirNameEl.textContent = handle.name;
+        dirInfo.classList.remove('hidden');
+        toast(`已选择目录：${handle.name}`, 'success');
+        document.querySelector('input[name="saveMode"][value="directory"]').checked = true;
+        document.querySelector('input[name="saveMode"][value="directory"]').dispatchEvent(new Event('change'));
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            toast('选择目录失败：' + err.message, 'error');
+        }
+    }
+});
+
+// ============== 开始转换 ==============
+convertBtn.addEventListener('click', async () => {
+    if (state.converting) return;
+    if (state.tasks.length === 0) {
+        toast('请先添加图片文件', 'warn');
+        return;
+    }
+
+    const assess = evaluateBatch();
+    if (assess.level === 'danger') {
+        const ok = window.confirm(
+            `⚠️ 当前批次已超过安全阈值：\n\n${assess.tip}\n\n` +
+            `继续执行可能导致浏览器内存溢出或崩溃。\n` +
+            `建议：点击"取消"后分批处理（每批 ≤ ${assess.limit} 个文件）。\n\n` +
+            `确定要强制继续转换吗？`
+        );
+        if (!ok) {
+            toast('已取消，请分批处理', 'info');
+            return;
+        }
+    } else if (assess.level === 'warn') {
+        toast(`批次偏大，建议留意浏览器内存占用`, 'warn');
+    }
+
+    const saveMode = getSaveMode();
+
+    if (saveMode === 'zip') {
+        const splitBytes = getZipSplitBytes();
+        if (splitBytes > 0) {
+            const estParts = estimateZipParts();
+            if (estParts > 1) {
+                const ok = window.confirm(
+                    `📦 ZIP 分卷提醒\n\n` +
+                    `按"每包 ≤ ${formatSize(splitBytes)}"，将分成 约 ${estParts} 个压缩包 依次下载\n\n` +
+                    `继续开始转换？`
+                );
+                if (!ok) {
+                    toast('已取消', 'info');
+                    return;
+                }
+            }
+        }
+    }
+
+    if (saveMode === 'directory') {
+        if (!window.showDirectoryPicker) {
+            toast('当前浏览器不支持保存到指定文件夹，请改用 ZIP 模式', 'error');
+            return;
+        }
+        if (!state.directoryHandle) {
+            try {
+                const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                state.directoryHandle = handle;
+                dirNameEl.textContent = handle.name;
+                dirInfo.classList.remove('hidden');
+            } catch (err) {
+                if (err.name !== 'AbortError') toast('未选择目录', 'warn');
+                return;
+            }
+        }
+        try {
+            const perm = await state.directoryHandle.queryPermission({ mode: 'readwrite' });
+            if (perm !== 'granted') {
+                const req = await state.directoryHandle.requestPermission({ mode: 'readwrite' });
+                if (req !== 'granted') {
+                    toast('未授予目录写入权限', 'error');
+                    return;
+                }
+            }
+        } catch (err) {}
+    }
+
+    state.converting = true;
+    convertBtn.disabled = true;
+    convertBtn.innerHTML = '<i class="fa-solid fa-spinner spin mr-2"></i>转换中...';
+    overallProgressWrap.classList.remove('hidden');
+
+    const queue = state.tasks.filter(t => t.status !== 'success' && t.status !== 'saved');
+    let done = 0;
+    overallProgressText.textContent = `0 / ${queue.length}`;
+    overallProgressBar.style.width = '0%';
+
+    const zipItems = saveMode === 'zip' ? [] : null;
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const task of queue) {
+        task.status = 'processing';
+        task.progress = 0;
+        task.error = '';
+        renderTask(task);
+
+        const isLargeTask = task.file.size >= LARGE_FILE_THRESHOLD;
+
+        try {
+            const { blob, thumbUrl, width, height } = await convertFileToImage(task.file, (p) => {
+                task.progress = p;
+                renderTask(task);
+            });
+
+            task.jpgBlob = blob;
+            task.thumbUrl = thumbUrl;
+            task.width = width;
+            task.height = height;
+            task.outSize = blob.size;
+            task.outName = buildOutputName(task.name);
+
+            if (saveMode === 'directory' && state.directoryHandle) {
+                await saveToDirectory(state.directoryHandle, task.outName, blob);
+                task.status = 'saved';
+                if (isLargeTask) task.jpgBlob = null;
+            } else if (saveMode === 'zip') {
+                zipItems.push({ outName: task.outName, jpgBlob: blob, outSize: blob.size });
+                task.status = 'success';
+            } else if (saveMode === 'each') {
+                downloadBlob(blob, task.outName);
+                task.status = 'success';
+                if (isLargeTask) task.jpgBlob = null;
+            } else {
+                task.status = 'success';
+            }
+
+            task.progress = 100;
+            successCount++;
+        } catch (err) {
+            console.error(err);
+            task.status = 'error';
+            task.error = err.message || String(err);
+            errorCount++;
+        }
+
+        renderTask(task);
+        done++;
+        const percent = Math.round((done / queue.length) * 100);
+        overallProgressBar.style.width = percent + '%';
+        overallProgressText.textContent = `${done} / ${queue.length}`;
+
+        if (isLargeTask) {
+            await yieldToBrowser(200);
+        } else {
+            await yieldToBrowser(0);
+        }
+    }
+
+    if (saveMode === 'zip' && zipItems && zipItems.length > 0) {
+        const splitBytes = getZipSplitBytes();
+        const parts = splitIntoParts(zipItems, splitBytes);
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const totalParts = parts.length;
+        const fmtTag = getOutputFormat();
+        const zipPrefix = `images2${fmtTag}`;
+
+        for (let i = 0; i < parts.length; i++) {
+            const partItems = parts[i];
+            const partZip = new JSZip();
+            partItems.forEach(it => partZip.file(it.outName, it.jpgBlob));
+
+            try {
+                const partIndex = totalParts > 1 ? `_part${String(i + 1).padStart(2, '0')}of${String(totalParts).padStart(2, '0')}` : '';
+                overallProgressText.textContent = totalParts > 1
+                    ? `打包第 ${i + 1}/${totalParts} 包 0%`
+                    : `打包中 0%`;
+
+                const content = await partZip.generateAsync(
+                    { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
+                    (meta) => {
+                        overallProgressText.textContent = totalParts > 1
+                            ? `打包第 ${i + 1}/${totalParts} 包 ${meta.percent.toFixed(0)}%`
+                            : `打包中 ${meta.percent.toFixed(0)}%`;
+                    }
+                );
+                const zipName = `${zipPrefix}_${stamp}${partIndex}.zip`;
+                if (typeof saveAs === 'function') {
+                    saveAs(content, zipName);
+                } else {
+                    downloadBlob(content, zipName);
+                }
+                if (i < parts.length - 1) {
+                    await new Promise(r => setTimeout(r, 600));
+                }
+            } catch (err) {
+                toast(`第 ${i + 1} 包打包失败：` + err.message, 'error');
+            }
+        }
+
+        overallProgressText.textContent = totalParts > 1
+            ? `已下载 ${totalParts} 个分卷包（共 ${successCount} 个文件）`
+            : `已打包 ${successCount} 个文件`;
+
+        if (totalParts > 1) {
+            toast(`已分 ${totalParts} 个压缩包下载完成`, 'success');
+        }
+    }
+
+    state.converting = false;
+    convertBtn.disabled = state.tasks.length === 0;
+    convertBtn.innerHTML = '<i class="fa-solid fa-play mr-2"></i>开始转换';
+
+    if (errorCount === 0) {
+        toast(`全部转换完成！共 ${successCount} 个文件`, 'success');
+    } else if (successCount === 0) {
+        toast(`转换失败：${errorCount} 个文件出错`, 'error');
+    } else {
+        toast(`完成 ${successCount} 个，失败 ${errorCount} 个`, 'warn');
+    }
+});
+
+// ============== 初始化 ==============
+updateFileCount();
+qualityValue.textContent = parseFloat(qualityRange.value).toFixed(2);
+
+// 通知启动遮罩：应用已初始化完成
+window.__APP_READY__ = true;
+
+if (!window.showDirectoryPicker) {
+    const dirRadio = document.querySelector('input[name="saveMode"][value="directory"]');
+    const zipRadio = document.querySelector('input[name="saveMode"][value="zip"]');
+    if (dirRadio) {
+        dirRadio.disabled = true;
+        const label = dirRadio.closest('label');
+        label.classList.add('opacity-50', 'cursor-not-allowed');
+        const pTip = label.querySelector('p.text-xs');
+        if (pTip) pTip.innerHTML += '<br><span class="text-rose-500">（当前浏览器不支持，请改用 Chrome/Edge）</span>';
+    }
+    if (zipRadio) {
+        zipRadio.checked = true;
+        zipRadio.dispatchEvent(new Event('change'));
+    }
+    pickDirBtn.disabled = true;
+    pickDirBtn.classList.add('opacity-50', 'cursor-not-allowed');
+}
+
+// ============== 手机端适配 ==============
+function isMobileDevice() {
+    const ua = (navigator.userAgent || navigator.vendor || '').toLowerCase();
+    const uaMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/i.test(ua);
+    const touchMobile = ('ontouchstart' in window) && window.innerWidth <= 768;
+    return uaMobile || touchMobile;
+}
+
+const IS_MOBILE = isMobileDevice();
+
+const cameraInput = document.getElementById('cameraInput');
+const albumInput  = document.getElementById('albumInput');
+
+on(cameraInput, 'change', (e) => {
+    if (e.target.files && e.target.files.length) {
+        addFiles(e.target.files);
+        cameraInput.value = '';
+    }
+}, 'cameraInput.change');
+
+on(albumInput, 'change', (e) => {
+    if (e.target.files && e.target.files.length) {
+        addFiles(e.target.files);
+        albumInput.value = '';
+    }
+}, 'albumInput.change');
+
+const paramsHeader   = document.getElementById('paramsHeader');
+const paramsCollapse = document.getElementById('paramsCollapse');
+const paramsChevron  = document.getElementById('paramsChevron');
+
+function setParamsCollapsed(collapsed) {
+    if (!paramsCollapse) return;
+    if (collapsed) {
+        paramsCollapse.classList.add('hidden');
+        if (paramsChevron) paramsChevron.style.transform = 'rotate(0deg)';
+    } else {
+        paramsCollapse.classList.remove('hidden');
+        if (paramsChevron) paramsChevron.style.transform = 'rotate(180deg)';
+    }
+}
+
+if (paramsCollapse) {
+    const narrowScreen = window.matchMedia('(max-width: 1023px)').matches;
+    setParamsCollapsed(narrowScreen);
+}
+
+on(paramsHeader, 'click', (e) => {
+    if (e.target.closest('label') || e.target.closest('input')) return;
+    if (window.matchMedia('(min-width: 1024px)').matches) return;
+    const isHidden = paramsCollapse.classList.contains('hidden');
+    setParamsCollapsed(!isHidden);
+}, 'paramsHeader.click');
+
+window.addEventListener('resize', () => {
+    if (!paramsCollapse) return;
+    if (window.matchMedia('(min-width: 1024px)').matches) {
+        setParamsCollapsed(false);
+    }
+});
+
+if (IS_MOBILE || !window.showDirectoryPicker) {
+    const dirRadio = document.querySelector('input[name="saveMode"][value="directory"]');
+    const zipRadio = document.querySelector('input[name="saveMode"][value="zip"]');
+    const saveDirCard = document.getElementById('saveDirCard');
+
+    if (dirRadio) {
+        dirRadio.disabled = true;
+        dirRadio.checked = false;
+    }
+    if (saveDirCard) {
+        saveDirCard.classList.add('opacity-50', 'pointer-events-none');
+        if (!saveDirCard.querySelector('[data-mobile-hint]') && IS_MOBILE) {
+            const desc = saveDirCard.querySelector('p.text-xs');
+            if (desc) {
+                const hint = document.createElement('span');
+                hint.setAttribute('data-mobile-hint', 'true');
+                hint.className = 'block text-rose-500 mt-0.5';
+                hint.textContent = '（手机浏览器暂不支持此模式）';
+                desc.appendChild(hint);
+            }
+        }
+    }
+    if (pickDirBtn) {
+        pickDirBtn.disabled = true;
+        pickDirBtn.classList.add('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+    }
+    if (zipRadio) {
+        zipRadio.checked = true;
+        zipRadio.dispatchEvent(new Event('change'));
+    }
+}
+
+if (IS_MOBILE) {
+    const headerSub = document.querySelector('header p.text-xs');
+    if (headerSub) headerSub.textContent = '纯浏览器运行 · 零上传';
+    const mainEl = document.querySelector('main');
+    if (mainEl) {
+        mainEl.classList.remove('px-6', 'py-10');
+        mainEl.classList.add('px-3', 'py-5');
+    }
+}
+
+on(albumInput, 'change', (e) => {
+    if (IS_MOBILE && e.target.files && e.target.files.length > 50) {
+        toast(`相册单次最多选 50 张，已自动截取前 50 张`, 'warn');
+    }
+}, 'albumInput.sizecheck');
+
+// ============== 企业微信 / WebView 兼容 ==============
+function detectEnv() {
+    const ua = (navigator.userAgent || '').toLowerCase();
+    const isWxWork = /wxwork|micromessenger.*wxwork/.test(ua) || /wxwork/.test(ua);
+    const isWechat = /micromessenger/.test(ua) && !isWxWork;
+    const isQQ     = /\bqq\//.test(ua) || /qqbrowser/.test(ua);
+    const isDingTalk = /dingtalk/.test(ua);
+    const isFeishu = /feishu|lark/.test(ua);
+    const isInAppWebView = isWxWork || isWechat || isQQ || isDingTalk || isFeishu;
+    return { ua, isWxWork, isWechat, isQQ, isDingTalk, isFeishu, isInAppWebView };
+}
+
+const ENV = detectEnv();
+
+if (IS_MOBILE) {
+    if (fileInput) fileInput.setAttribute('accept', '*/*');
+}
+
+if (ENV.isInAppWebView && IS_MOBILE) {
+    const tipEl = document.getElementById('wxworkTip');
+    if (tipEl) {
+        tipEl.classList.remove('hidden');
+        let title = '检测到您正在 App 内置浏览器中浏览';
+        if (ENV.isWxWork) title = '检测到您正在企业微信内浏览';
+        else if (ENV.isWechat) title = '检测到您正在微信内浏览';
+        else if (ENV.isQQ) title = '检测到您正在 QQ 内浏览';
+        else if (ENV.isDingTalk) title = '检测到您正在钉钉内浏览';
+        else if (ENV.isFeishu) title = '检测到您正在飞书内浏览';
+        const titleEl = tipEl.querySelector('p.font-semibold');
+        if (titleEl) titleEl.textContent = title;
+    }
+
+    let hasPicked = false;
+    if (fileInput) {
+        fileInput.addEventListener('change', () => { hasPicked = true; }, { once: true });
+    }
+    setTimeout(() => {
+        if (!hasPicked && state.tasks.length === 0) {
+            toast('如选择文件无反应，请点右上角「在浏览器中打开」', 'info');
+        }
+    }, 8000);
+}
+
+if (ENV.isWxWork && !IS_MOBILE) {
+    const tipEl = document.getElementById('wxworkTip');
+    if (tipEl) {
+        tipEl.classList.remove('hidden');
+        const titleEl = tipEl.querySelector('p.font-semibold');
+        if (titleEl) titleEl.textContent = '检测到您正在企业微信客户端内浏览';
+        const listEl = tipEl.querySelector('ol');
+        if (listEl) {
+            listEl.innerHTML = `
+                <li>建议使用 <b>Chrome / Edge</b> 浏览器直接访问本网址</li>
+                <li>企业微信客户端内 WebView 对"保存到指定文件夹"不支持，已自动切换为 ZIP 下载</li>
+            `;
+        }
+    }
+}
+    </script>
+</body>
+</html>
