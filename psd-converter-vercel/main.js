@@ -1337,6 +1337,9 @@ convertBtn.addEventListener('click', async () => {
 updateFileCount();
 qualityValue.textContent = parseFloat(qualityRange.value).toFixed(2);
 
+// 通知启动遮罩：应用已初始化完成
+window.__APP_READY__ = true;
+
 // 检测浏览器能力
 if (!window.showDirectoryPicker) {
     const dirRadio = document.querySelector('input[name="saveMode"][value="directory"]');
