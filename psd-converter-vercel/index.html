@@ -1,28 +1,18 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head><script src="https://with.woa.com/d2c/assets/iframe.js?_t=1776911299530"></script>
+<head><script src="https://with.woa.com/d2c/assets/iframe.js?_t=1776913808809"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#7c3aed" />
     <title>图片批量转换工具 · PSD / PNG / JPG / WEBP / GIF / BMP / TIFF / ICO</title>
-    <!-- Tailwind：主源 jsdelivr，失败自动切 unpkg -->
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"
-            onerror="this.onerror=null;this.src='https://unpkg.com/@tailwindcss/browser@4';"></script>
-    <!-- 兼容旧版 Tailwind CDN（如上面加载失败，这个作为第二保险） -->
-    <script>
-      if (!window.tailwind) {
-        var s = document.createElement('script');
-        s.src = 'https://cdn.tailwindcss.com';
-        s.onerror = function(){
-          var s2 = document.createElement('script');
-          s2.src = 'https://unpkg.com/tailwindcss-cdn@3.4.0/dist/tailwind.min.js';
-          document.head.appendChild(s2);
-        };
-        document.head.appendChild(s);
-      }
-    </script>
+    <!-- Tailwind CSS 引入：官方 CDN 是唯一支持 tailwind.config 自定义配色的方案 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 兜底样式：如果 cdn.tailwindcss.com 加载失败，预编译版 tailwind.min.css 会提供基础 utility 类（不支持自定义 brand，但页面不会完全崩） -->
+    <link rel="stylesheet"
+          href="https://cdn.bootcdn.net/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"
+          onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css';" />
     <!-- Font Awesome：主 cdnjs，备 jsdelivr / unpkg -->
     <link rel="stylesheet"
           href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
@@ -219,6 +209,62 @@ html.is-mobile, body.is-mobile { -webkit-text-size-adjust: 100%; }
         background-color: transparent !important;
         transform: none !important;
     }
+}
+
+/* ============== 防御性兜底样式（Tailwind CDN 或自定义 brand 配色未加载时，确保关键渐变可见） ============== */
+.bg-gradient-to-br.from-brand-500.to-indigo-500 {
+    background-image: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%) !important;
+}
+.bg-gradient-to-r.from-brand-500.to-indigo-500 {
+    background-image: linear-gradient(to right, #8b5cf6 0%, #6366f1 100%) !important;
+}
+.bg-gradient-to-r.from-brand-600.via-indigo-600.to-pink-500 {
+    background-image: linear-gradient(to right, #7c3aed 0%, #4f46e5 50%, #ec4899 100%) !important;
+}
+.shadow-brand-500\/30 {
+    box-shadow: 0 10px 15px -3px rgba(139, 92, 246, 0.3), 0 4px 6px -4px rgba(139, 92, 246, 0.3) !important;
+}
+.shadow-brand-500\/40 {
+    box-shadow: 0 20px 25px -5px rgba(139, 92, 246, 0.4), 0 8px 10px -6px rgba(139, 92, 246, 0.4) !important;
+}
+.shadow-brand-500\/50 {
+    box-shadow: 0 25px 50px -12px rgba(139, 92, 246, 0.5) !important;
+}
+.text-brand-500 { color: #8b5cf6 !important; }
+.text-brand-600 { color: #7c3aed !important; }
+.text-brand-700 { color: #6d28d9 !important; }
+.bg-brand-50  { background-color: #f5f3ff !important; }
+.bg-brand-100 { background-color: #ede9fe !important; }
+.bg-brand-500 { background-color: #8b5cf6 !important; }
+.bg-brand-600 { background-color: #7c3aed !important; }
+.border-brand-400 { border-color: #a78bfa !important; }
+.border-brand-500 { border-color: #8b5cf6 !important; }
+.accent-brand-600 { accent-color: #7c3aed !important; }
+h2.bg-gradient-to-r.from-brand-600.via-indigo-600.to-pink-500.bg-clip-text {
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    color: transparent !important;
+}
+/* 转换按钮核心兜底（保证在任何情况下都显示紫蓝粉渐变） */
+#convertBtn {
+    background-image: linear-gradient(to right, #7c3aed 0%, #4f46e5 50%, #ec4899 100%) !important;
+    color: #fff !important;
+    box-shadow: 0 20px 25px -5px rgba(139, 92, 246, 0.4), 0 8px 10px -6px rgba(139, 92, 246, 0.4) !important;
+}
+#convertBtn:disabled {
+    opacity: 0.4 !important;
+    cursor: not-allowed !important;
+    filter: grayscale(0.2);
+}
+/* 顶栏 Logo / 上传区主图标兜底 */
+header .rounded-xl.bg-gradient-to-br {
+    background-image: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%) !important;
+    color: #fff !important;
+}
+#dropZone .rounded-xl.bg-gradient-to-br,
+#dropZone .rounded-2xl.bg-gradient-to-br {
+    background-image: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%) !important;
+    color: #fff !important;
 }
     </style>
     <script>
